@@ -1,0 +1,26 @@
+{
+  "name": "plcov",
+  "version": "0.1.0",
+  "description": "Prototype: branch, condition and MC/DC coverage for PL/SQL via source instrumentation",
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "node --import tsx --test test/*.test.ts",
+    "plcov": "tsx src/cli.ts",
+    "demo": "tsx src/cli.ts run --config demo/plcov.json"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "oracledb": "^26.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/oracledb": "^26.0.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  },
+  "private": true,
+  "type": "module",
+  "bin": {
+    "plcov": "src/cli.ts"
+  }
+}

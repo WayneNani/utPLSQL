@@ -1,0 +1,8 @@
+{
+  "user": "demo",
+  "password": "demo",
+  "connectString": "localhost:1521/FREEPDB1",
+  "schema": "DEMO",
+  "tests": ["demo"],
+  "sqlProbes": "auto"
+}

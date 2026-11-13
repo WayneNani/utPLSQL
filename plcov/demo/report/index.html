@@ -1,0 +1,308 @@
+<title>plcov DEMO</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wdth,wght@75..100,400..700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: report spine; summary first (claim → evidence → objects), code views below with findings beside the code. */
+:root {
+  --bg: #f3f5f4; --surface: #ffffff; --sunk: #eaeeec; --ink: #17201e; --muted: #5a6866; --line: #d9e0de;
+  --accent: #0d6b74; --accent-ink: #ffffff;
+  --ok: #1d7f49; --warn: #a86a12; --bad: #b8402b; --null: #6652c4; --nf: #8a9593;
+  --ok-tint: #e3f2e8; --warn-tint: #fbf0dc; --bad-tint: #f9e4df; --nf-tint: #eef0ef; --target: #fff3b0;
+  --code-kw: #0d5f8a; --code-str: #8a4b12; --code-com: #7d8a88; --code-num: #7a3e9d;
+  --font-ui: "Instrument Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-code: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1413; --surface: #151d1c; --sunk: #1b2524; --ink: #e2eae8; --muted: #93a3a0; --line: #283432;
+    --accent: #52b6bf; --accent-ink: #062022;
+    --ok: #52c486; --warn: #e3ab4f; --bad: #f08068; --null: #a898f2; --nf: #73807e;
+    --ok-tint: #15291f; --warn-tint: #2c2414; --bad-tint: #321a16; --nf-tint: #1b2322; --target: #3a3413;
+    --code-kw: #79c0e6; --code-str: #e6b17a; --code-com: #6f7f7c; --code-num: #c7a2ea;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1413; --surface: #151d1c; --sunk: #1b2524; --ink: #e2eae8; --muted: #93a3a0; --line: #283432;
+  --accent: #52b6bf; --accent-ink: #062022;
+  --ok: #52c486; --warn: #e3ab4f; --bad: #f08068; --null: #a898f2; --nf: #73807e;
+  --ok-tint: #15291f; --warn-tint: #2c2414; --bad-tint: #321a16; --nf-tint: #1b2322; --target: #3a3413;
+  --code-kw: #79c0e6; --code-str: #e6b17a; --code-com: #6f7f7c; --code-num: #c7a2ea;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font-ui); margin: 0; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; grid-template-columns: minmax(0, 1fr); gap: 40px; }
+h1, h2, h3 { font-stretch: 85%; letter-spacing: -0.01em; text-wrap: balance; margin: 0; }
+code { font-family: var(--font-code); font-size: 0.88em; background: var(--sunk); padding: 0.05em 0.35em; border-radius: 4px; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+
+/* header */
+.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 24px; border-bottom: 1px solid var(--line); padding-bottom: 14px; }
+.brand { font: 700 20px/1 var(--font-code); letter-spacing: -0.02em; }
+.brand span { color: var(--accent); }
+.meta { color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 16px; font-variant-numeric: tabular-nums; }
+
+/* hero */
+.hero { display: grid; gap: 22px; }
+.hero h1 { font-size: clamp(26px, 3.6vw, 40px); line-height: 1.15; font-weight: 600; max-width: 30ch; }
+.hero h1 em { font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hero h1 em.t-ok { color: var(--ok); } .hero h1 em.t-warn { color: var(--warn); } .hero h1 em.t-bad { color: var(--bad); }
+.compare { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 6px 20px; }
+.cmp-row { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 2fr) 92px; gap: 18px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+.cmp-row:first-child { border-top: 0; }
+.cmp-row.ref { border-bottom: 2px solid var(--line); }
+.cmp-label { display: grid; min-width: 0; }
+.cmp-label strong { font-weight: 600; }
+.cmp-label span { color: var(--muted); font-size: 13px; line-height: 1.35; }
+.cmp-val { text-align: right; display: grid; font-variant-numeric: tabular-nums; }
+.cmp-val b { font: 600 17px var(--font-code); }
+.cmp-val small { color: var(--muted); font-size: 12px; font-family: var(--font-code); }
+.bar { height: 12px; border-radius: 99px; background: var(--sunk); overflow: hidden; }
+.bar span { display: block; height: 100%; border-radius: 99px; background: var(--muted); }
+.bar.t-ok span { background: var(--ok); } .bar.t-warn span { background: var(--warn); } .bar.t-bad span { background: var(--bad); }
+.bar.ref span { background: repeating-linear-gradient(-45deg, var(--muted) 0 6px, transparent 6px 9px); }
+.bar.mini { height: 6px; width: 64px; flex: none; }
+
+/* facts */
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.fact { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; display: grid; gap: 4px; align-content: start; }
+.fact-k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+.fact-v { font: 600 20px var(--font-code); font-variant-numeric: tabular-nums; }
+.fact-d { font-size: 13px; color: var(--muted); }
+.f-ok .fact-v { color: var(--ok); } .f-bad .fact-v { color: var(--bad); }
+
+/* table */
+section > header { display: grid; gap: 6px; margin-bottom: 14px; }
+.tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { padding: 10px 14px; text-align: left; border-top: 1px solid var(--line); white-space: nowrap; }
+thead th { border-top: 0; font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+tbody th { font-weight: 600; }
+tbody th a { text-decoration: none; font-family: var(--font-code); font-size: 13.5px; }
+.otype { display: block; color: var(--muted); font-weight: 400; font-size: 12px; }
+.cell { display: flex; align-items: center; gap: 8px; }
+.num { font-family: var(--font-code); font-size: 13px; font-variant-numeric: tabular-nums; }
+.find { text-align: right; }
+td.err { color: var(--bad); white-space: normal; }
+
+/* object sections */
+.obj { display: grid; gap: 14px; scroll-margin-top: 16px; }
+.obj-head > div:first-child { min-width: 0; }
+.obj-head h3 { overflow-wrap: anywhere; }
+.obj-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; }
+.obj-head h3 { font-family: var(--font-code); font-size: 19px; font-stretch: 100%; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 12.5px; border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 2px 10px; font-variant-numeric: tabular-nums; }
+.chip b { font-family: var(--font-code); font-weight: 600; }
+.chip.t-ok b { color: var(--ok); } .chip.t-warn b { color: var(--warn); } .chip.t-bad b { color: var(--bad); }
+.chip.ref { border-style: dashed; }
+.obj-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
+@media (max-width: 980px) { .obj-body { grid-template-columns: minmax(0, 1fr); } .cmp-row { grid-template-columns: minmax(0, 1fr) 80px; } .cmp-row .bar { grid-column: 1 / -1; grid-row: 2; } }
+
+.code { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow-x: auto; font: 13px/1.6 var(--font-code); }
+.code table { font-size: inherit; width: max-content; min-width: 100%; }
+.code td { border: 0; padding: 0; white-space: pre; vertical-align: top; }
+.code tr:target td { background: var(--target); }
+.ln { color: var(--muted); text-align: right; padding: 0 10px 0 12px !important; user-select: none; font-size: 12px; }
+.ut { width: 14px; text-align: center; user-select: none; }
+.ut i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid var(--muted); }
+.ut i.y { background: var(--muted); }
+.hits { color: var(--muted); text-align: right; padding: 0 8px !important; font-size: 11.5px; user-select: none; min-width: 52px; }
+.src { padding: 0 16px 0 10px !important; border-left: 3px solid transparent; }
+tr.s-covered .src { border-left-color: var(--ok); }
+tr.s-partial .src { border-left-color: var(--warn); background: var(--warn-tint); }
+tr.s-missed .src { border-left-color: var(--bad); background: var(--bad-tint); }
+tr.s-nf .src { border-left-color: var(--nf); background: var(--nf-tint); }
+.kw { color: var(--code-kw); font-weight: 600; }
+.str { color: var(--code-str); }
+.com { color: var(--code-com); font-style: italic; }
+.nm { color: var(--code-num); }
+.cond { border-bottom: 2px solid var(--ok); cursor: help; border-radius: 2px; }
+.cond.c-partial { border-bottom-color: var(--warn); }
+.cond.c-missed { border-bottom-color: var(--bad); border-bottom-style: dashed; }
+.cond.c-nf { border-bottom-color: var(--nf); }
+.tf { display: inline-flex; gap: 1px; vertical-align: 1px; margin: 0 2px 0 1px; cursor: help; }
+.tf b { font: 600 9px/1 var(--font-ui); padding: 2px 3px; border-radius: 3px; background: var(--sunk); color: var(--muted); }
+.tf b.on { color: var(--accent-ink); }
+.tf b.on.T { background: var(--ok); } .tf b.on.F { background: var(--bad); } .tf b.on.N { background: var(--null); }
+.tf b.mc { margin-left: 2px; }
+.tf b.mc.yes { background: var(--ok-tint); color: var(--ok); } .tf b.mc.no { background: var(--bad-tint); color: var(--bad); }
+.br { margin-left: 10px; font: 600 10.5px var(--font-ui); padding: 1px 7px; border-radius: 99px; background: var(--sunk); color: var(--muted); cursor: help; }
+.br.t-ok { background: var(--ok-tint); color: var(--ok); } .br.t-warn, .br.t-bad { background: var(--warn-tint); color: var(--warn); }
+.br.t-bad { background: var(--bad-tint); color: var(--bad); }
+
+aside.findings { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 4px 0; position: sticky; top: max(12px, env(safe-area-inset-top, 0px)); max-height: calc(100vh - 24px); overflow: auto; }
+.findings h4 { margin: 10px 16px 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.findings ol { list-style: none; margin: 0; padding: 0; }
+.findings li a { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 8px; padding: 8px 16px; text-decoration: none; color: inherit; border-top: 1px solid var(--line); }
+.findings li a:hover { background: var(--sunk); }
+.fl { font: 12px var(--font-code); color: var(--muted); padding-top: 2px; }
+.ft { font-size: 13.5px; line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
+.ft small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.kind { font: 600 10px var(--font-ui); text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 6px; border-radius: 4px; margin-right: 4px; background: var(--sunk); color: var(--muted); }
+.kind.mcdc, .kind.cond { color: var(--null); }
+.kind.branch, .kind.stmt { color: var(--bad); }
+.kind.loop { color: var(--warn); }
+.findings .none { padding: 12px 16px; color: var(--ok); font-size: 14px; border-top: 1px solid var(--line); }
+.gaps li { padding: 8px 16px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 8px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--muted); align-items: center; }
+.legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+.method { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 28px; font-size: 14px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 20px; }
+.method h4 { color: var(--ink); margin: 0 0 4px; font-size: 14px; }
+.method p { margin: 0; max-width: 62ch; }
+
+#tip { position: fixed; z-index: 20; max-width: min(380px, calc(100vw - 32px)); background: var(--ink); color: var(--bg); border-radius: 8px; padding: 10px 12px; font-size: 13px; line-height: 1.45; pointer-events: none; box-shadow: 0 8px 24px rgb(0 0 0 / 0.18); }
+#tip code { background: transparent; color: inherit; padding: 0; font-weight: 600; }
+#tip .row { display: flex; justify-content: space-between; gap: 16px; font-variant-numeric: tabular-nums; }
+#tip hr { border: 0; border-top: 1px solid currentColor; opacity: 0.25; margin: 6px 0; }
+@media (prefers-reduced-motion: no-preference) { .bar span { transition: width 0.6s ease; } }
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <div class="brand">pl<span>cov</span></div>
+    <div class="meta">
+      <span>Schema <b>DEMO</b></span>
+      <span>Oracle AI Database 26ai Free Release 23.26.3.0.0</span>
+      <span>SQL-Sonden aktiv</span>
+      <span>13.11.2026, 18:43 UTC</span>
+    </div>
+  </div>
+
+  <section class="hero" aria-labelledby="h-hero">
+    <div class="eyebrow">Gemessen mit denselben 10 utPLSQL-Tests</div>
+    <h1 id="h-hero">utPLSQL meldet <em>87,9 %</em> Zeilen-Coverage. Getestet sind <em class="t-bad">65 %</em> der Branches und <em class="t-bad">42,9 %</em> MC/DC.</h1>
+    <div class="compare"><div class="cmp-row ref">
+       <div class="cmp-label"><strong>Zeilen</strong><span>utPLSQL heute (DBMS_PROFILER)</span></div>
+       <div class="bar ref t-warn" role="img" aria-label="87,9 %"><span style="width:87.87878787878788%"></span></div>
+       <div class="cmp-val"><b>87,9 %</b><small>29/33</small></div>
+     </div><div class="cmp-row">
+        <div class="cmp-label"><strong>Anweisungen</strong><span>Jede ausführbare Anweisung einzeln, auch wenn mehrere in einer Zeile stehen.</span></div>
+        <div class="bar  t-warn" role="img" aria-label="88 %"><span style="width:88%"></span></div>
+        <div class="cmp-val"><b>88 %</b><small>22/25</small></div>
+      </div><div class="cmp-row">
+        <div class="cmp-label"><strong>Branches</strong><span>Jeder Zweig von IF, CASE, Schleifenbedingungen und Exception-Handlern, auch implizite ELSE-Zweige.</span></div>
+        <div class="bar  t-bad" role="img" aria-label="65 %"><span style="width:65%"></span></div>
+        <div class="cmp-val"><b>65 %</b><small>13/20</small></div>
+      </div><div class="cmp-row">
+        <div class="cmp-label"><strong>Bedingungen</strong><span>Jede Teilbedingung von AND/OR-Ausdrücken mindestens einmal WAHR und einmal FALSCH.</span></div>
+        <div class="bar  t-bad" role="img" aria-label="54,5 %"><span style="width:54.54545454545454%"></span></div>
+        <div class="cmp-val"><b>54,5 %</b><small>12/22</small></div>
+      </div><div class="cmp-row">
+        <div class="cmp-label"><strong>MC/DC</strong><span>Jede Teilbedingung hat nachweislich allein das Ergebnis ihrer Entscheidung verändert (nur PL/SQL).</span></div>
+        <div class="bar  t-bad" role="img" aria-label="42,9 %"><span style="width:42.857142857142854%"></span></div>
+        <div class="cmp-val"><b>42,9 %</b><small>3/7</small></div>
+      </div><div class="cmp-row">
+        <div class="cmp-label"><strong>Schleifen</strong><span>Schleifen mit 0, genau 1 und mehreren Durchläufen (0 entfällt bei einfacher LOOP).</span></div>
+        <div class="bar  t-bad" role="img" aria-label="40 %"><span style="width:40%"></span></div>
+        <div class="cmp-val"><b>40 %</b><small>2/5</small></div>
+      </div></div>
+    
+    <div class="facts">
+      <div class="fact f-ok">
+        <span class="fact-k">Verhalten unverändert</span>
+        <span class="fact-v">10/10 Tests identisch</span>
+        <span class="fact-d">Jeder Test liefert mit und ohne Instrumentierung dasselbe Ergebnis (10 bestanden).</span>
+      </div>
+      <div class="fact">
+        <span class="fact-k">Instrumentieren (TypeScript)</span>
+        <span class="fact-v">3,8 ms</span>
+        <span class="fact-d">Parsen und Sonden setzen für 2 Objekte. Kompilieren in der DB: 37 ms.</span>
+      </div>
+      <div class="fact">
+        <span class="fact-k">Laufzeit-Overhead</span>
+        <span class="fact-v">× 9,5</span>
+        <span class="fact-d">Sondenreichster Test „Pricing under load“: 6,4 ms ohne Coverage, 31 ms mit utPLSQL-Coverage, 61 ms mit plcov.</span>
+      </div>
+      <div class="fact">
+        <span class="fact-k">Testläufe gesamt</span>
+        <span class="fact-v">229 ms</span>
+        <span class="fact-d">Ohne Coverage 159 ms, mit utPLSQL-Coverage 369 ms.</span>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-obj">
+    <header><div class="eyebrow">Objekte</div><h2 id="h-obj">Abdeckung je Programmeinheit</h2></header>
+    <div class="tbl"><table>
+      <thead><tr><th>Objekt</th><th>Zeilen (utPLSQL)</th><th>Anweisungen</th><th>Branches</th><th>Bedingungen</th><th>MC/DC</th><th>Schleifen</th><th class="find">Lücken</th></tr></thead>
+      <tbody><tr>
+      <th scope="row"><a href="#o0">archive_orders</a><span class="otype">procedure</span></th>
+      <td><div class="cell"><div class="bar mini ref t-bad" role="img" aria-label="60 %"><span style="width:60%"></span></div><span class="num">60 %</span></div></td>
+      <td><div class="cell"><div class="bar mini t-ok" role="img" aria-label="100 %"><span style="width:100%"></span></div><span class="num">100 %</span></div></td><td><div class="cell"><div class="bar mini t-ok" role="img" aria-label="100 %"><span style="width:100%"></span></div><span class="num">100 %</span></div></td><td><div class="cell"><div class="bar mini t-ok" role="img" aria-label="100 %"><span style="width:100%"></span></div><span class="num">100 %</span></div></td><td><div class="cell"><div class="bar mini t-ok" role="img" aria-label="100 %"><span style="width:100%"></span></div><span class="num">100 %</span></div></td><td><div class="cell"><div class="bar mini t-bad" role="img" aria-label="50 %"><span style="width:50%"></span></div><span class="num">50 %</span></div></td>
+      <td class="num find">1</td>
+    </tr><tr>
+      <th scope="row"><a href="#o1">order_pricing</a><span class="otype">package body</span></th>
+      <td><div class="cell"><div class="bar mini ref t-ok" role="img" aria-label="100 %"><span style="width:100%"></span></div><span class="num">100 %</span></div></td>
+      <td><div class="cell"><div class="bar mini t-warn" role="img" aria-label="84,2 %"><span style="width:84.21052631578947%"></span></div><span class="num">84,2 %</span></div></td><td><div class="cell"><div class="bar mini t-bad" role="img" aria-label="61,1 %"><span style="width:61.111111111111114%"></span></div><span class="num">61,1 %</span></div></td><td><div class="cell"><div class="bar mini t-bad" role="img" aria-label="50 %"><span style="width:50%"></span></div><span class="num">50 %</span></div></td><td><div class="cell"><div class="bar mini t-bad" role="img" aria-label="33,3 %"><span style="width:33.33333333333333%"></span></div><span class="num">33,3 %</span></div></td><td><div class="cell"><div class="bar mini t-bad" role="img" aria-label="33,3 %"><span style="width:33.33333333333333%"></span></div><span class="num">33,3 %</span></div></td>
+      <td class="num find">18</td>
+    </tr></tbody>
+    </table></div>
+  </section>
+
+  <div class="legend" aria-label="Legende">
+    <span><i class="sw" style="background:var(--ok)"></i>vollständig</span>
+    <span><i class="sw" style="background:var(--warn)"></i>teilweise (Zweig oder Bedingung fehlt)</span>
+    <span><i class="sw" style="background:var(--bad)"></i>nie ausgeführt</span>
+    <span><i class="sw" style="background:var(--nf)"></i>NOT_FEASIBLE</span>
+    <span><span class="tf"><b class="on T">T</b><b class="on F">F</b><b class="on N">N</b></span>Teilbedingung war WAHR / FALSCH / NULL</span>
+    <span><span class="ut"><i class="y"></i></span> utPLSQL-Zeile gezählt</span>
+  </div>
+
+  <section class="obj" id="o0" aria-label="ARCHIVE_ORDERS">
+    <div class="obj-head"><div><div class="eyebrow">procedure</div><h3>demo.archive_orders</h3></div><div class="chips"><span class="chip ref">Zeilen (utPLSQL) <b>60 %</b></span><span class="chip t-ok">Anweisungen <b>100 %</b></span><span class="chip t-ok">Branches <b>100 %</b></span><span class="chip t-ok">Bedingungen <b>100 %</b></span><span class="chip t-ok">MC/DC <b>100 %</b></span><span class="chip t-bad">Schleifen <b>50 %</b></span></div></div>
+    <div class="obj-body">
+      <div class="code"><table><tr id="o0-L1" class=""><td class="ln">1</td><td class="ut"></td><td class="hits"></td><td class="src"><span class="kw">procedure</span> archive_orders(p_before <span class="kw">date</span>, p_batch <span class="kw">pls_integer</span> := <span class="nm">100</span>) <span class="kw">is</span></td></tr><tr id="o0-L2" class=""><td class="ln">2</td><td class="ut"></td><td class="hits"></td><td class="src">  l_rows <span class="kw">pls_integer</span>;</td></tr><tr id="o0-L3" class=""><td class="ln">3</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">procedure</span> log(p_msg <span class="kw">varchar2</span>) <span class="kw">is</span></td></tr><tr id="o0-L4" class=""><td class="ln">4</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">begin</span></td></tr><tr id="o0-L5" class="s-covered"><td class="ln">5</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">2×</td><td class="src">    dbms_output.put_line(p_msg);</td></tr><tr id="o0-L6" class=""><td class="ln">6</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">end</span> log;</td></tr><tr id="o0-L7" class=""><td class="ln">7</td><td class="ut"></td><td class="hits"></td><td class="src"><span class="kw">begin</span></td></tr><tr id="o0-L8" class="s-covered"><td class="ln">8</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">1×</td><td class="src">  <span class="kw">loop</span><span class="br t-bad" data-tip="t1" tabindex="0">↻ 1/2</span></td></tr><tr id="o0-L9" class="s-covered"><td class="ln">9</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">2×</td><td class="src">    <span class="kw">delete</span> <span class="kw">from</span> orders <span class="kw">where</span> created &lt; p_before <span class="kw">and</span> rownum &lt;= p_batch;</td></tr><tr id="o0-L10" class="s-covered"><td class="ln">10</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">2×</td><td class="src">    l_rows := sql%rowcount;</td></tr><tr id="o0-L11" class="s-covered"><td class="ln">11</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">2×</td><td class="src">    log(<span class="str">'deleted '</span> || l_rows);</td></tr><tr id="o0-L12" class="s-covered"><td class="ln">12</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">2×</td><td class="src">    <span class="kw">exit</span> <span class="kw">when</span> <span class="cond c-ok" data-tip="t0" tabindex="0" aria-label="Teilbedingung WAHR gesehen, FALSCH gesehen">l_rows &lt; p_batch</span><span class="tf" data-tip="t0" aria-hidden="true"><b class="T on">T</b><b class="F on">F</b><b class="N">N</b></span>;<span class="br t-ok" data-tip="t2" tabindex="0">◆ 2/2 Zweige</span></td></tr><tr id="o0-L13" class=""><td class="ln">13</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">end</span> <span class="kw">loop</span>;</td></tr><tr id="o0-L14" class=""><td class="ln">14</td><td class="ut"></td><td class="hits"></td><td class="src"><span class="kw">exception</span></td></tr><tr id="o0-L15" class=""><td class="ln">15</td><td class="ut"><i class="n" title="utPLSQL: nicht ausgeführt"></i></td><td class="hits"></td><td class="src">  <span class="kw">when</span> <span class="kw">others</span> <span class="kw">then</span></td></tr><tr id="o0-L16" class=""><td class="ln">16</td><td class="ut"><i class="n" title="utPLSQL: nicht ausgeführt"></i></td><td class="hits"></td><td class="src">    <span class="kw">pragma</span> coverage(<span class="str">'NOT_FEASIBLE'</span>);</td></tr><tr id="o0-L17" class="s-nf"><td class="ln">17</td><td class="ut"><i class="n" title="utPLSQL: nicht ausgeführt"></i></td><td class="hits">0×</td><td class="src">    log(sqlerrm);</td></tr><tr id="o0-L18" class="s-nf"><td class="ln">18</td><td class="ut"><i class="n" title="utPLSQL: nicht ausgeführt"></i></td><td class="hits">0×</td><td class="src">    <span class="kw">raise</span>;</td></tr><tr id="o0-L19" class=""><td class="ln">19</td><td class="ut"></td><td class="hits"></td><td class="src"><span class="kw">end</span> archive_orders;</td></tr></table></div>
+      <aside class="findings"><h4>Lücken (1)</h4><ol><li><a href="#o0-L8"><span class="fl">Z. 8</span><span class="ft"><span class="kind loop">Schleife</span>Schleife nie genau 1-mal durchlaufen</span></a></li></ol></aside>
+    </div>
+  </section><section class="obj" id="o1" aria-label="ORDER_PRICING">
+    <div class="obj-head"><div><div class="eyebrow">package body</div><h3>demo.order_pricing</h3></div><div class="chips"><span class="chip ref">Zeilen (utPLSQL) <b>100 %</b></span><span class="chip t-warn">Anweisungen <b>84,2 %</b></span><span class="chip t-bad">Branches <b>61,1 %</b></span><span class="chip t-bad">Bedingungen <b>50 %</b></span><span class="chip t-bad">MC/DC <b>33,3 %</b></span><span class="chip t-bad">Schleifen <b>33,3 %</b></span></div></div>
+    <div class="obj-body">
+      <div class="code"><table><tr id="o1-L1" class=""><td class="ln">1</td><td class="ut"></td><td class="hits"></td><td class="src"><span class="kw">package</span> <span class="kw">body</span> order_pricing <span class="kw">is</span></td></tr><tr id="o1-L2" class=""><td class="ln">2</td><td class="ut"></td><td class="hits"></td><td class="src"></td></tr><tr id="o1-L3" class=""><td class="ln">3</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">function</span> discount_pct(p_amount <span class="kw">number</span>, p_vip <span class="kw">boolean</span>, p_coupon <span class="kw">varchar2</span>) <span class="kw">return</span> <span class="kw">number</span> <span class="kw">is</span></td></tr><tr id="o1-L4" class=""><td class="ln">4</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits"></td><td class="src">    l_pct <span class="kw">number</span> := <span class="nm">0</span>;</td></tr><tr id="o1-L5" class=""><td class="ln">5</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">begin</span></td></tr><tr id="o1-L6" class="s-partial"><td class="ln">6</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">20.003×</td><td class="src">    <span class="kw">if</span> <span class="cond c-ok" data-tip="t3" tabindex="0" aria-label="Teilbedingung WAHR gesehen, FALSCH gesehen">p_vip</span><span class="tf" data-tip="t3" aria-hidden="true"><b class="T on">T</b><b class="F on">F</b><b class="N">N</b><b class="mc yes">MC/DC ✓</b></span> <span class="kw">and</span> <span class="cond c-partial" data-tip="t4" tabindex="0" aria-label="Teilbedingung WAHR gesehen, nie FALSCH">p_amount &gt; <span class="nm">1000</span></span><span class="tf" data-tip="t4" aria-hidden="true"><b class="T on">T</b><b class="F">F</b><b class="N">N</b><b class="mc no">MC/DC ✗</b></span> <span class="kw">then</span><span class="br t-ok" data-tip="t13" tabindex="0">◆ 1/1 Zweige</span></td></tr><tr id="o1-L7" class="s-covered"><td class="ln">7</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">20.001×</td><td class="src">      l_pct := <span class="nm">10</span>;</td></tr><tr id="o1-L8" class="s-partial"><td class="ln">8</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits"></td><td class="src">    <span class="kw">elsif</span> <span class="cond c-ok" data-tip="t5" tabindex="0" aria-label="Teilbedingung WAHR gesehen, FALSCH gesehen">p_coupon <span class="kw">is</span> <span class="kw">not</span> <span class="kw">null</span></span><span class="tf" data-tip="t5" aria-hidden="true"><b class="T on">T</b><b class="F on">F</b><b class="N">N</b><b class="mc yes">MC/DC ✓</b></span> <span class="kw">or</span> <span class="cond c-partial" data-tip="t6" tabindex="0" aria-label="Teilbedingung nie WAHR, FALSCH gesehen">p_amount <span class="kw">between</span> <span class="nm">500</span> <span class="kw">and</span> <span class="nm">1000</span></span><span class="tf" data-tip="t6" aria-hidden="true"><b class="T">T</b><b class="F on">F</b><b class="N">N</b><b class="mc no">MC/DC ✗</b></span> <span class="kw">then</span><span class="br t-ok" data-tip="t14" tabindex="0">◆ 1/1 Zweige</span></td></tr><tr id="o1-L9" class="s-covered"><td class="ln">9</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">1×</td><td class="src">      l_pct := <span class="nm">5</span>;</td></tr><tr id="o1-L10" class=""><td class="ln">10</td><td class="ut"></td><td class="hits"></td><td class="src">    <span class="kw">end</span> <span class="kw">if</span>;<span class="br t-ok" data-tip="t15" tabindex="0">◆ 1/1 Zweige</span></td></tr><tr id="o1-L11" class="s-covered"><td class="ln">11</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">20.003×</td><td class="src">    <span class="kw">return</span> l_pct;</td></tr><tr id="o1-L12" class=""><td class="ln">12</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">end</span> discount_pct;</td></tr><tr id="o1-L13" class=""><td class="ln">13</td><td class="ut"></td><td class="hits"></td><td class="src"></td></tr><tr id="o1-L14" class=""><td class="ln">14</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">function</span> shipping_fee(p_country <span class="kw">varchar2</span>, p_weight_kg <span class="kw">number</span>) <span class="kw">return</span> <span class="kw">number</span> <span class="kw">is</span></td></tr><tr id="o1-L15" class=""><td class="ln">15</td><td class="ut"></td><td class="hits"></td><td class="src">    l_fee <span class="kw">number</span>;</td></tr><tr id="o1-L16" class=""><td class="ln">16</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">begin</span></td></tr><tr id="o1-L17" class="s-covered"><td class="ln">17</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">2×</td><td class="src">    <span class="kw">case</span> p_country</td></tr><tr id="o1-L18" class="s-covered"><td class="ln">18</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">1×</td><td class="src">      <span class="kw">when</span> <span class="str">'DE'</span> <span class="kw">then</span> l_fee := <span class="nm">4.90</span>;<span class="br t-ok" data-tip="t16" tabindex="0">◆ 1/1 Zweige</span></td></tr><tr id="o1-L19" class="s-missed"><td class="ln">19</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">0×</td><td class="src">      <span class="kw">when</span> <span class="str">'AT'</span> <span class="kw">then</span> l_fee := <span class="nm">7.90</span>;<span class="br t-bad" data-tip="t17" tabindex="0">◆ 0/1 Zweige</span></td></tr><tr id="o1-L20" class="s-missed"><td class="ln">20</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">0×</td><td class="src">      <span class="kw">when</span> <span class="str">'CH'</span> <span class="kw">then</span> l_fee := <span class="nm">14.90</span>;<span class="br t-bad" data-tip="t18" tabindex="0">◆ 0/1 Zweige</span></td></tr><tr id="o1-L21" class=""><td class="ln">21</td><td class="ut"></td><td class="hits"></td><td class="src">    <span class="kw">end</span> <span class="kw">case</span>;<span class="br t-ok" data-tip="t19" tabindex="0">◆ 1/1 Zweige</span></td></tr><tr id="o1-L22" class="s-partial"><td class="ln">22</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">1×</td><td class="src">    <span class="kw">if</span> <span class="cond c-partial" data-tip="t7" tabindex="0" aria-label="Teilbedingung nie WAHR, FALSCH gesehen">p_weight_kg &gt; <span class="nm">20</span></span><span class="tf" data-tip="t7" aria-hidden="true"><b class="T">T</b><b class="F on">F</b><b class="N">N</b></span> <span class="kw">then</span> l_fee := l_fee * <span class="nm">2</span>; <span class="kw">end</span> <span class="kw">if</span>;<span class="br t-bad" data-tip="t20" tabindex="0">◆ 1/2 Zweige</span></td></tr><tr id="o1-L23" class="s-covered"><td class="ln">23</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">1×</td><td class="src">    <span class="kw">return</span> l_fee;</td></tr><tr id="o1-L24" class=""><td class="ln">24</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">exception</span></td></tr><tr id="o1-L25" class=""><td class="ln">25</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits"></td><td class="src">    <span class="kw">when</span> <span class="kw">case_not_found</span> <span class="kw">then</span><span class="br t-ok" data-tip="t21" tabindex="0">◆ 1/1 Zweige</span></td></tr><tr id="o1-L26" class="s-covered"><td class="ln">26</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">1×</td><td class="src">      <span class="kw">return</span> <span class="nm">24.90</span>;</td></tr><tr id="o1-L27" class=""><td class="ln">27</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">end</span> shipping_fee;</td></tr><tr id="o1-L28" class=""><td class="ln">28</td><td class="ut"></td><td class="hits"></td><td class="src"></td></tr><tr id="o1-L29" class=""><td class="ln">29</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">function</span> risk_class(p_customer_id <span class="kw">number</span>) <span class="kw">return</span> <span class="kw">varchar2</span> <span class="kw">is</span></td></tr><tr id="o1-L30" class=""><td class="ln">30</td><td class="ut"></td><td class="hits"></td><td class="src">    l_class <span class="kw">varchar2</span>(<span class="nm">10</span>);</td></tr><tr id="o1-L31" class=""><td class="ln">31</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">begin</span></td></tr><tr id="o1-L32" class="s-covered"><td class="ln">32</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">2×</td><td class="src">    <span class="kw">select</span> <span class="kw">case</span></td></tr><tr id="o1-L33" class="s-partial"><td class="ln">33</td><td class="ut"></td><td class="hits"></td><td class="src">             <span class="kw">when</span> <span class="cond c-partial" data-tip="t8" tabindex="0" aria-label="Teilbedingung WAHR gesehen, nie FALSCH">c.open_invoices &gt; <span class="nm">3</span></span><span class="tf" data-tip="t8" aria-hidden="true"><b class="T on">T</b><b class="F">F</b><b class="N">N</b></span> <span class="kw">or</span> <span class="cond c-missed" data-tip="t9" tabindex="0" aria-label="Teilbedingung nie WAHR, nie FALSCH">c.days_overdue &gt; <span class="nm">60</span></span><span class="tf" data-tip="t9" aria-hidden="true"><b class="T">T</b><b class="F">F</b><b class="N">N</b></span> <span class="kw">then</span> <span class="str">'HIGH'</span><span class="br t-ok" data-tip="t22" tabindex="0">◆ 1/1 Zweige</span></td></tr><tr id="o1-L34" class="s-partial"><td class="ln">34</td><td class="ut"></td><td class="hits"></td><td class="src">             <span class="kw">when</span> <span class="cond c-missed" data-tip="t10" tabindex="0" aria-label="Teilbedingung nie WAHR, nie FALSCH">c.open_invoices &gt; <span class="nm">0</span></span><span class="tf" data-tip="t10" aria-hidden="true"><b class="T">T</b><b class="F">F</b><b class="N">N</b></span> <span class="kw">then</span> <span class="str">'MEDIUM'</span><span class="br t-bad" data-tip="t23" tabindex="0">◆ 0/1 Zweige</span></td></tr><tr id="o1-L35" class="s-partial"><td class="ln">35</td><td class="ut"></td><td class="hits"></td><td class="src">             <span class="kw">else</span> <span class="str">'LOW'</span><span class="br t-bad" data-tip="t24" tabindex="0">◆ 0/1 Zweige</span></td></tr><tr id="o1-L36" class=""><td class="ln">36</td><td class="ut"></td><td class="hits"></td><td class="src">           <span class="kw">end</span></td></tr><tr id="o1-L37" class=""><td class="ln">37</td><td class="ut"></td><td class="hits"></td><td class="src">      <span class="kw">into</span> l_class</td></tr><tr id="o1-L38" class=""><td class="ln">38</td><td class="ut"></td><td class="hits"></td><td class="src">      <span class="kw">from</span> customers c</td></tr><tr id="o1-L39" class=""><td class="ln">39</td><td class="ut"></td><td class="hits"></td><td class="src">     <span class="kw">where</span> c.id = p_customer_id;</td></tr><tr id="o1-L40" class="s-covered"><td class="ln">40</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">1×</td><td class="src">    <span class="kw">return</span> l_class;</td></tr><tr id="o1-L41" class=""><td class="ln">41</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">exception</span></td></tr><tr id="o1-L42" class=""><td class="ln">42</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits"></td><td class="src">    <span class="kw">when</span> <span class="kw">no_data_found</span> <span class="kw">then</span><span class="br t-ok" data-tip="t25" tabindex="0">◆ 1/1 Zweige</span></td></tr><tr id="o1-L43" class="s-covered"><td class="ln">43</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">1×</td><td class="src">      <span class="kw">return</span> <span class="str">'UNKNOWN'</span>;</td></tr><tr id="o1-L44" class=""><td class="ln">44</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">end</span> risk_class;</td></tr><tr id="o1-L45" class=""><td class="ln">45</td><td class="ut"></td><td class="hits"></td><td class="src"></td></tr><tr id="o1-L46" class=""><td class="ln">46</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">procedure</span> apply_bulk_discount(p_order_id <span class="kw">number</span>) <span class="kw">is</span></td></tr><tr id="o1-L47" class=""><td class="ln">47</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits"></td><td class="src">    l_total <span class="kw">number</span> := <span class="nm">0</span>;</td></tr><tr id="o1-L48" class=""><td class="ln">48</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">begin</span></td></tr><tr id="o1-L49" class="s-covered"><td class="ln">49</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">1×</td><td class="src">    <span class="kw">for</span> r <span class="kw">in</span> (<span class="kw">select</span> qty, unit_price <span class="kw">from</span> order_lines <span class="kw">where</span> order_id = p_order_id) <span class="kw">loop</span><span class="br t-bad" data-tip="t26" tabindex="0">↻ 1/3</span></td></tr><tr id="o1-L50" class="s-covered"><td class="ln">50</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">2×</td><td class="src">      l_total := l_total + r.qty * r.unit_price;</td></tr><tr id="o1-L51" class="s-partial"><td class="ln">51</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">2×</td><td class="src">      <span class="kw">exit</span> <span class="kw">when</span> <span class="cond c-partial" data-tip="t11" tabindex="0" aria-label="Teilbedingung nie WAHR, FALSCH gesehen">l_total &gt; <span class="nm">10000</span></span><span class="tf" data-tip="t11" aria-hidden="true"><b class="T">T</b><b class="F on">F</b><b class="N">N</b></span>;<span class="br t-bad" data-tip="t27" tabindex="0">◆ 1/2 Zweige</span></td></tr><tr id="o1-L52" class=""><td class="ln">52</td><td class="ut"></td><td class="hits"></td><td class="src">    <span class="kw">end</span> <span class="kw">loop</span>;</td></tr><tr id="o1-L53" class="s-covered"><td class="ln">53</td><td class="ut"><i class="y" title="utPLSQL: ausgeführt"></i></td><td class="hits">1×</td><td class="src">    <span class="kw">update</span> orders</td></tr><tr id="o1-L54" class="s-partial"><td class="ln">54</td><td class="ut"></td><td class="hits"></td><td class="src">       <span class="kw">set</span> discount = <span class="kw">case</span> <span class="kw">when</span> <span class="cond c-partial" data-tip="t12" tabindex="0" aria-label="Teilbedingung WAHR gesehen, nie FALSCH">l_total &gt;= <span class="nm">5000</span></span><span class="tf" data-tip="t12" aria-hidden="true"><b class="T on">T</b><b class="F">F</b><b class="N">N</b></span> <span class="kw">then</span> <span class="nm">0.03</span> <span class="kw">else</span> <span class="nm">0</span> <span class="kw">end</span><span class="br t-bad" data-tip="t28" tabindex="0">◆ 1/2 Zweige</span></td></tr><tr id="o1-L55" class=""><td class="ln">55</td><td class="ut"></td><td class="hits"></td><td class="src">     <span class="kw">where</span> id = p_order_id;</td></tr><tr id="o1-L56" class=""><td class="ln">56</td><td class="ut"></td><td class="hits"></td><td class="src">  <span class="kw">end</span> apply_bulk_discount;</td></tr><tr id="o1-L57" class=""><td class="ln">57</td><td class="ut"></td><td class="hits"></td><td class="src"></td></tr><tr id="o1-L58" class=""><td class="ln">58</td><td class="ut"></td><td class="hits"></td><td class="src"><span class="kw">end</span> order_pricing;</td></tr></table></div>
+      <aside class="findings"><h4>Lücken (18)</h4><ol><li><a href="#o1-L6"><span class="fl">Z. 6</span><span class="ft"><span class="kind cond">Bedingung</span>Teilbedingung <code>p_amount &gt; 1000</code> nie FALSCH</span></a></li><li><a href="#o1-L6"><span class="fl">Z. 6</span><span class="ft"><span class="kind mcdc">MC/DC</span>MC/DC: unabhängige Wirkung von <code>p_amount &gt; 1000</code> nicht nachgewiesen<small>Fehlender Testfall: <code>p_vip</code> = WAHR, <code>p_amount &gt; 1000</code> = FALSCH → Ergebnis FALSCH</small></span></a></li><li><a href="#o1-L8"><span class="fl">Z. 8</span><span class="ft"><span class="kind cond">Bedingung</span>Teilbedingung <code>p_amount between 500 and 1000</code> nie WAHR</span></a></li><li><a href="#o1-L8"><span class="fl">Z. 8</span><span class="ft"><span class="kind mcdc">MC/DC</span>MC/DC: unabhängige Wirkung von <code>p_amount between 500 and 1000</code> nicht nachgewiesen<small>Fehlender Testfall: <code>p_coupon is not null</code> = FALSCH, <code>p_amount between 500 and 1000</code> = WAHR → Ergebnis WAHR</small></span></a></li><li><a href="#o1-L19"><span class="fl">Z. 19</span><span class="ft"><span class="kind stmt">Anweisung</span>Zeilen 19–20 nie ausgeführt</span></a></li><li><a href="#o1-L19"><span class="fl">Z. 19</span><span class="ft"><span class="kind branch">Branch</span>Zweig WHEN 'AT' nie durchlaufen</span></a></li><li><a href="#o1-L20"><span class="fl">Z. 20</span><span class="ft"><span class="kind branch">Branch</span>Zweig WHEN 'CH' nie durchlaufen</span></a></li><li><a href="#o1-L22"><span class="fl">Z. 22</span><span class="ft"><span class="kind stmt">Anweisung</span>Zeile 22 nie ausgeführt</span></a></li><li><a href="#o1-L22"><span class="fl">Z. 22</span><span class="ft"><span class="kind branch">Branch</span>Zweig THEN nie durchlaufen<small>Bedingung <code>p_weight_kg &gt; 20</code> war nie WAHR</small></span></a></li><li><a href="#o1-L22"><span class="fl">Z. 22</span><span class="ft"><span class="kind cond">Bedingung</span>Teilbedingung <code>p_weight_kg &gt; 20</code> nie WAHR</span></a></li><li><a href="#o1-L33"><span class="fl">Z. 33</span><span class="ft"><span class="kind cond">Bedingung</span>Teilbedingung <code>c.open_invoices &gt; 3</code> nie FALSCH</span></a></li><li><a href="#o1-L34"><span class="fl">Z. 34</span><span class="ft"><span class="kind branch">Branch</span>Zweig WHEN c.open_invoices &gt; 0 nie durchlaufen<small>Bedingung <code>c.open_invoices &gt; 0</code> wurde nie ausgewertet</small></span></a></li><li><a href="#o1-L35"><span class="fl">Z. 35</span><span class="ft"><span class="kind branch">Branch</span>Zweig ELSE nie durchlaufen<small>Bedingung <code>c.open_invoices &gt; 0</code> wurde nie ausgewertet</small></span></a></li><li><a href="#o1-L49"><span class="fl">Z. 49</span><span class="ft"><span class="kind loop">Schleife</span>Schleife nie 0-mal, nie genau 1-mal durchlaufen</span></a></li><li><a href="#o1-L51"><span class="fl">Z. 51</span><span class="ft"><span class="kind branch">Branch</span>Zweig WAHR → Schleife verlassen nie durchlaufen<small>Bedingung <code>l_total &gt; 10000</code> war nie WAHR</small></span></a></li><li><a href="#o1-L51"><span class="fl">Z. 51</span><span class="ft"><span class="kind cond">Bedingung</span>Teilbedingung <code>l_total &gt; 10000</code> nie WAHR</span></a></li><li><a href="#o1-L54"><span class="fl">Z. 54</span><span class="ft"><span class="kind branch">Branch</span>Zweig ELSE nie durchlaufen<small>Bedingung <code>l_total &gt;= 5000</code> war nie FALSCH oder NULL</small></span></a></li><li><a href="#o1-L54"><span class="fl">Z. 54</span><span class="ft"><span class="kind cond">Bedingung</span>Teilbedingung <code>l_total &gt;= 5000</code> nie FALSCH</span></a></li></ol></aside>
+    </div>
+  </section>
+
+  <section class="method" aria-label="Methode">
+    <div><h4>So wird gemessen</h4><p>plcov liest den kompilierten Quelltext, setzt Sonden an jede Anweisung, Entscheidung und Teilbedingung und kompiliert den Code neu. Die Sonden fügen keine Zeilen ein, Fehlermeldungen behalten ihre Zeilennummern. Danach laufen die utPLSQL-Tests, und der Originalcode wird wiederhergestellt.</p></div>
+    <div><h4>NULL und Kurzschluss</h4><p>Jede Teilbedingung wird als WAHR, FALSCH oder NULL gezählt. Die Sonden geben den Wert unverändert zurück, deshalb bleiben Kurzschlussauswertung und NULL-Semantik erhalten. MC/DC wertet nicht ausgewertete Teilbedingungen als Platzhalter (unique cause mit Kurzschluss).</p></div>
+    <div><h4>Grenzen des Prototyps</h4><p>Bedingungen in WHERE-, ON- und HAVING-Klauseln werden bewusst nicht instrumentiert, weil das den Ausführungsplan verändern würde. Dynamisches SQL, mit wrap verschlüsselter Code und Compound-Trigger werden nicht gemessen. Treffer aus anderen Sessions (Jobs, parallele Abfragen) fehlen noch.</p></div>
+  </section>
+</div>
+
+<div id="tip" hidden></div>
+<div hidden><div id="t0"><b><code>l_rows &lt; p_batch</code></b><div style="opacity:.75">Teilbedingung 1 von 1 · PL/SQL</div><hr><div class="row"><span>WAHR</span><span>1×</span></div><div class="row"><span>FALSCH</span><span>1×</span></div><div class="row"><span>NULL</span><span>0×</span></div></div><div id="t1"><b>Schleife (loop)</b><hr><div class="row"><span>genau 1 Durchlauf</span><span>0×</span></div><div class="row"><span>mehrere Durchläufe</span><span>1×</span></div></div><div id="t2"><b>Zweige in Zeile 12</b><hr><div class="row"><span>WAHR → Schleife verlassen</span><span>1×</span></div><div class="row"><span>nicht WAHR → weiter</span><span>1×</span></div></div><div id="t3"><b><code>p_vip</code></b><div style="opacity:.75">Teilbedingung 1 von 2 · PL/SQL</div><hr><div class="row"><span>WAHR</span><span>20.001×</span></div><div class="row"><span>FALSCH</span><span>2×</span></div><div class="row"><span>NULL</span><span>0×</span></div><hr><div>MC/DC: unabhängige Wirkung nachgewiesen ✓</div></div><div id="t4"><b><code>p_amount &gt; 1000</code></b><div style="opacity:.75">Teilbedingung 2 von 2 · PL/SQL</div><hr><div class="row"><span>WAHR</span><span>20.001×</span></div><div class="row"><span>FALSCH</span><span>0×</span></div><div class="row"><span>NULL</span><span>0×</span></div><hr><div>MC/DC: unabhängige Wirkung nicht nachgewiesen</div><div style="margin-top:4px">Fehlender Testfall: <code>p_vip</code> = WAHR, <code>p_amount &gt; 1000</code> = FALSCH → Ergebnis FALSCH</div></div><div id="t5"><b><code>p_coupon is not null</code></b><div style="opacity:.75">Teilbedingung 1 von 2 · PL/SQL</div><hr><div class="row"><span>WAHR</span><span>1×</span></div><div class="row"><span>FALSCH</span><span>1×</span></div><div class="row"><span>NULL</span><span>0×</span></div><hr><div>MC/DC: unabhängige Wirkung nachgewiesen ✓</div></div><div id="t6"><b><code>p_amount between 500 and 1000</code></b><div style="opacity:.75">Teilbedingung 2 von 2 · PL/SQL</div><hr><div class="row"><span>WAHR</span><span>0×</span></div><div class="row"><span>FALSCH</span><span>1×</span></div><div class="row"><span>NULL</span><span>0×</span></div><hr><div>MC/DC: unabhängige Wirkung nicht nachgewiesen</div><div style="margin-top:4px">Fehlender Testfall: <code>p_coupon is not null</code> = FALSCH, <code>p_amount between 500 and 1000</code> = WAHR → Ergebnis WAHR</div></div><div id="t7"><b><code>p_weight_kg &gt; 20</code></b><div style="opacity:.75">Teilbedingung 1 von 1 · PL/SQL</div><hr><div class="row"><span>WAHR</span><span>0×</span></div><div class="row"><span>FALSCH</span><span>1×</span></div><div class="row"><span>NULL</span><span>0×</span></div></div><div id="t8"><b><code>c.open_invoices &gt; 3</code></b><div style="opacity:.75">Teilbedingung 1 von 2 · SQL</div><hr><div class="row"><span>WAHR</span><span>1×</span></div><div class="row"><span>FALSCH</span><span>0×</span></div><div class="row"><span>NULL</span><span>0×</span></div><hr><div style="opacity:.75">In SQL ist die Auswertungsreihenfolge nicht festgelegt, deshalb kein MC/DC.</div></div><div id="t9"><b><code>c.days_overdue &gt; 60</code></b><div style="opacity:.75">Teilbedingung 2 von 2 · SQL</div><hr><div class="row"><span>WAHR</span><span>0×</span></div><div class="row"><span>FALSCH</span><span>0×</span></div><div class="row"><span>NULL</span><span>0×</span></div><hr><div style="opacity:.75">In SQL ist die Auswertungsreihenfolge nicht festgelegt, deshalb kein MC/DC.</div></div><div id="t10"><b><code>c.open_invoices &gt; 0</code></b><div style="opacity:.75">Teilbedingung 1 von 1 · SQL</div><hr><div class="row"><span>WAHR</span><span>0×</span></div><div class="row"><span>FALSCH</span><span>0×</span></div><div class="row"><span>NULL</span><span>0×</span></div><hr><div style="opacity:.75">In SQL ist die Auswertungsreihenfolge nicht festgelegt, deshalb kein MC/DC.</div></div><div id="t11"><b><code>l_total &gt; 10000</code></b><div style="opacity:.75">Teilbedingung 1 von 1 · PL/SQL</div><hr><div class="row"><span>WAHR</span><span>0×</span></div><div class="row"><span>FALSCH</span><span>2×</span></div><div class="row"><span>NULL</span><span>0×</span></div></div><div id="t12"><b><code>l_total &gt;= 5000</code></b><div style="opacity:.75">Teilbedingung 1 von 1 · SQL</div><hr><div class="row"><span>WAHR</span><span>1×</span></div><div class="row"><span>FALSCH</span><span>0×</span></div><div class="row"><span>NULL</span><span>0×</span></div><hr><div style="opacity:.75">In SQL ist die Auswertungsreihenfolge nicht festgelegt, deshalb kein MC/DC.</div></div><div id="t13"><b>Zweige in Zeile 6</b><hr><div class="row"><span>THEN</span><span>20001×</span></div></div><div id="t14"><b>Zweige in Zeile 8</b><hr><div class="row"><span>ELSIF … THEN</span><span>1×</span></div></div><div id="t15"><b>Zweige in Zeile 10</b><hr><div class="row"><span>ELSE (implizit)</span><span>1×</span></div></div><div id="t16"><b>Zweige in Zeile 18</b><hr><div class="row"><span>WHEN 'DE'</span><span>1×</span></div></div><div id="t17"><b>Zweige in Zeile 19</b><hr><div class="row"><span>WHEN 'AT'</span><span>0×</span></div></div><div id="t18"><b>Zweige in Zeile 20</b><hr><div class="row"><span>WHEN 'CH'</span><span>0×</span></div></div><div id="t19"><b>Zweige in Zeile 21</b><hr><div class="row"><span>ELSE (implizit → CASE_NOT_FOUND)</span><span>1×</span></div></div><div id="t20"><b>Zweige in Zeile 22</b><hr><div class="row"><span>THEN</span><span>0×</span></div><div style="opacity:.75">Bedingung <code>p_weight_kg &gt; 20</code> war nie WAHR</div><div class="row"><span>ELSE (implizit)</span><span>1×</span></div></div><div id="t21"><b>Zweige in Zeile 25</b><hr><div class="row"><span>WHEN case_not_found</span><span>1×</span></div></div><div id="t22"><b>Zweige in Zeile 33</b><hr><div class="row"><span>WHEN c.open_invoices &gt; 3 or c.days_overdue &gt; 60</span><span>1×</span></div></div><div id="t23"><b>Zweige in Zeile 34</b><hr><div class="row"><span>WHEN c.open_invoices &gt; 0</span><span>0×</span></div><div style="opacity:.75">Bedingung <code>c.open_invoices &gt; 0</code> wurde nie ausgewertet</div></div><div id="t24"><b>Zweige in Zeile 35</b><hr><div class="row"><span>ELSE</span><span>0×</span></div><div style="opacity:.75">Bedingung <code>c.open_invoices &gt; 0</code> wurde nie ausgewertet</div></div><div id="t25"><b>Zweige in Zeile 42</b><hr><div class="row"><span>WHEN no_data_found</span><span>1×</span></div></div><div id="t26"><b>Schleife (cursor-for)</b><hr><div class="row"><span>0 Durchläufe</span><span>0×</span></div><div class="row"><span>genau 1 Durchlauf</span><span>0×</span></div><div class="row"><span>mehrere Durchläufe</span><span>1×</span></div></div><div id="t27"><b>Zweige in Zeile 51</b><hr><div class="row"><span>WAHR → Schleife verlassen</span><span>0×</span></div><div style="opacity:.75">Bedingung <code>l_total &gt; 10000</code> war nie WAHR</div><div class="row"><span>nicht WAHR → weiter</span><span>2×</span></div></div><div id="t28"><b>Zweige in Zeile 54</b><hr><div class="row"><span>WHEN l_total &gt;= 5000</span><span>1×</span></div><div class="row"><span>ELSE</span><span>0×</span></div><div style="opacity:.75">Bedingung <code>l_total &gt;= 5000</code> war nie FALSCH oder NULL</div></div></div>
+<script>
+(() => {
+  const tipEl = document.getElementById('tip');
+  let current = null;
+  const show = (el) => {
+    const src = document.getElementById(el.dataset.tip);
+    if (!src) return;
+    current = el;
+    tipEl.innerHTML = src.innerHTML;
+    tipEl.hidden = false;
+    const r = el.getBoundingClientRect();
+    const w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+    let x = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+    let y = r.bottom + 8;
+    if (y + h > window.innerHeight - 8) y = Math.max(8, r.top - h - 8);
+    tipEl.style.left = x + 'px';
+    tipEl.style.top = y + 'px';
+  };
+  const hide = () => { tipEl.hidden = true; current = null; };
+  document.addEventListener('mouseover', (e) => { const el = e.target.closest('[data-tip]'); if (el) show(el); else if (current) hide(); });
+  document.addEventListener('focusin', (e) => { const el = e.target.closest('[data-tip]'); if (el) show(el); });
+  document.addEventListener('focusout', hide);
+  document.addEventListener('click', (e) => { const el = e.target.closest('[data-tip]'); if (el && el !== current) show(el); else if (!el) hide(); });
+  window.addEventListener('scroll', hide, { passive: true });
+})();
+</script>
