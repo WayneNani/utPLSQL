@@ -365,6 +365,25 @@ create or replace package test_ut_run is
     --%test(Reports each test case under its own name)
     procedure report_test_case_names;
 
+    --%test(Runs a single test case given by path)
+    procedure run_single_test_case;
+
+    --%test(Raises invalid path format when a test case number follows a package name)
+    --%throws(ut3_develop.ut_utils.gc_invalid_path_format)
+    procedure run_test_case_suffix_on_package;
+
+    --%test(Runs one test case for each row of the --%testcasesource query, after beforeall)
+    procedure run_test_case_source;
+
+    --%test(Passes object type values from the --%testcasesource query)
+    procedure run_test_case_source_object;
+
+    --%test(Gives a warning when the --%testcasesource query returns no rows)
+    procedure run_test_case_source_no_rows;
+
+    --%test(Reports the test as errored when the --%testcasesource query fails)
+    procedure run_test_case_source_failing;
+
   --%endcontext
 
   procedure create_suite_with_test_cases;

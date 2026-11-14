@@ -26,6 +26,7 @@ create or replace noneditionable package body ut_suite_builder is
   gc_tags                        constant t_annotation_name := 'tags';
   gc_test                        constant t_annotation_name := ut_utils.gc_test_execute;
   gc_testcase                    constant t_annotation_name := 'testcase';
+  gc_testcasesource              constant t_annotation_name := 'testcasesource';
   gc_disabled                    constant t_annotation_name := 'disabled';
   gc_displayname                 constant t_annotation_name := 'displayname';
   gc_beforeall                   constant t_annotation_name := ut_utils.gc_before_all;
@@ -49,6 +50,7 @@ create or replace noneditionable package body ut_suite_builder is
       gc_tags,
       gc_test,
       gc_testcase,
+      gc_testcasesource,
       gc_disabled,
       gc_displayname,
       gc_beforeall,
@@ -93,7 +95,8 @@ create or replace noneditionable package body ut_suite_builder is
     parse_time  timestamp,
     by_line     tt_annotations_by_line,
     by_proc     tt_annotations_by_proc,
-    by_name     tt_annotations_by_name
+    by_name     tt_annotations_by_name,
+    parameters  ut_metadata.tt_parameters
   );
 
   procedure delete_annotations_range(
@@ -377,26 +380,123 @@ create or replace noneditionable package body ut_suite_builder is
     return l_result;
   end;
 
+  /*
+    Checks an argument list against the parameters of the procedure, as far as possible without running it:
+    number of arguments, parameter names, parameters without default value and the order of positional and named arguments.
+    Types are not checked, as PL/SQL converts many of them implicitly.
+    Returns null when the arguments fit one of the overloads, or when the procedure is not known (it is reported when called).
+  */
+  function get_arguments_error(
+    a_annotations      t_annotations_info,
+    a_procedure_name   t_object_name,
+    a_arguments        varchar2,
+    a_check_existence  boolean := true
+  ) return varchar2 is
+    l_procedure_name t_object_name := upper(a_procedure_name);
+    l_arguments      ut_varchar2_list := ut_utils.split_top_level(a_arguments);
+    l_overload       varchar2(40);
+    l_names          ut_varchar2_list := ut_varchar2_list();
+    l_defaulted      ut_varchar2_list := ut_varchar2_list();
+    l_error          varchar2(4000);
+    l_first_error    varchar2(4000);
+
+    function get_overload_error return varchar2 is
+      type tt_given is table of boolean index by t_object_name;
+      l_given   tt_given;
+      l_name    t_object_name;
+      l_named   boolean := false;
+      l_missing varchar2(4000);
+    begin
+      for i in 1 .. l_arguments.count loop
+        l_name := upper(regexp_substr(l_arguments(i), '^([[:alpha:]][[:alnum:]_$#]*)\s*=>', subexpression => 1));
+        if l_arguments(i) is null then
+          return 'argument ' || i || ' is empty';
+        elsif l_name is null then
+          if l_named then
+            return 'argument ' || i || ' is passed by position after an argument passed by name';
+          elsif i > l_names.count then
+            return l_arguments.count || ' argument(s) given, but the procedure has ' || l_names.count || ' parameter(s)';
+          end if;
+          l_given(l_names(i)) := true;
+        else
+          l_named := true;
+          if not l_name member of l_names then
+            return 'the procedure has no parameter ' || l_name;
+          elsif l_given.exists(l_name) then
+            return 'parameter ' || l_name || ' is given twice';
+          end if;
+          l_given(l_name) := true;
+        end if;
+      end loop;
+      for i in 1 .. l_names.count loop
+        if l_defaulted(i) = 'N' and not l_given.exists(l_names(i)) then
+          l_missing := l_missing || case when l_missing is not null then ', ' end || l_names(i);
+        end if;
+      end loop;
+      return case when l_missing is not null then 'no value for parameter(s) ' || l_missing end;
+    end;
+  begin
+    if a_annotations.parameters is not null then
+      for i in 1 .. a_annotations.parameters.count loop
+        if a_annotations.parameters(i).procedure_name = l_procedure_name then
+          if l_overload is not null and l_overload != a_annotations.parameters(i).overload then
+            l_error := get_overload_error();
+            if l_error is null then
+              return null;
+            end if;
+            l_first_error := coalesce(l_first_error, l_error);
+            l_names := ut_varchar2_list();
+            l_defaulted := ut_varchar2_list();
+          end if;
+          l_overload := a_annotations.parameters(i).overload;
+          l_names.extend;
+          l_names(l_names.last) := a_annotations.parameters(i).parameter_name;
+          l_defaulted.extend;
+          l_defaulted(l_defaulted.last) := a_annotations.parameters(i).defaulted;
+        end if;
+      end loop;
+    end if;
+    if l_overload is not null then
+      l_error := get_overload_error();
+      return case when l_error is not null then coalesce(l_first_error, l_error) end;
+    elsif a_check_existence and ut_metadata.procedure_exists(upper(a_annotations.owner), upper(a_annotations.name), l_procedure_name) then
+      -- a procedure without parameters has no entries in the list of parameters
+      return get_overload_error();
+    end if;
+    return null;
+  end;
+
   procedure add_test_cases(
+    a_suite       in out nocopy ut_suite,
     a_suite_items in out nocopy ut_suite_items,
     a_test        ut_test,
+    a_annotations t_annotations_info,
     a_test_cases  tt_annotation_texts
   ) is
     l_test     ut_test;
     l_position t_annotation_position := a_test_cases.first;
     l_case_no  binary_integer := 0;
+    l_error    varchar2(4000);
   begin
     while l_position is not null loop
+      -- cases are numbered by annotation, so that the number of a case does not change when another case is invalid
       l_case_no := l_case_no + 1;
-      l_test := a_test;
-      -- each case gets its own cache row, keyed by owner + path and by owner + package + line
-      l_test.line_no := l_position;
-      l_test.name := a_test.name || '[' || l_case_no || ']';
-      l_test.path := a_test.path || '[' || l_case_no || ']';
-      l_test.item.call_arguments := trim(a_test_cases(l_position));
-      l_test.description := get_test_case_description(a_test.description, l_test.item.call_arguments);
-      a_suite_items.extend;
-      a_suite_items(a_suite_items.last) := l_test;
+      l_error := get_arguments_error(a_annotations, a_test.name, trim(a_test_cases(l_position)));
+      if l_error is not null then
+        add_annotation_ignored_warning(
+          a_suite, gc_testcase, 'Annotation %%% has invalid arguments: ' || l_error || '.', l_position, a_test.name
+        );
+      else
+        l_test := a_test;
+        -- each case gets its own cache row, keyed by owner + path and by owner + package + line
+        l_test.line_no := l_position;
+        l_test.name := a_test.name || '[' || l_case_no || ']';
+        l_test.path := a_test.path || '[' || l_case_no || ']';
+        l_test.item.call_arguments := trim(a_test_cases(l_position));
+        l_test.description := get_test_case_description(a_test.description, l_test.item.call_arguments);
+        a_suite_items.extend;
+        a_suite_items(a_suite_items.last) := l_test;
+      end if;
       l_position := a_test_cases.next(l_position);
     end loop;
   end;
@@ -411,18 +511,22 @@ create or replace noneditionable package body ut_suite_builder is
     l_annotation_texts tt_annotation_texts;
     l_proc_annotations tt_annotations_by_name :=  a_annotations.by_proc(a_procedure_name);
     l_position         t_annotation_position;
+    l_error            varchar2(4000);
+    c_test_case_annotations constant ut_varchar2_list := ut_varchar2_list(gc_testcase, gc_testcasesource);
   begin
 
     if not l_proc_annotations.exists(gc_test) then
-      if l_proc_annotations.exists(gc_testcase) then
-        l_position := l_proc_annotations(gc_testcase).first;
-        while l_position is not null loop
-          add_annotation_ignored_warning(
-            a_suite, gc_testcase, 'Annotation %%% can only be used with "--%test".', l_position, a_procedure_name
-          );
-          l_position := l_proc_annotations(gc_testcase).next(l_position);
-        end loop;
-      end if;
+      for i in 1 .. c_test_case_annotations.count loop
+        if l_proc_annotations.exists(c_test_case_annotations(i)) then
+          l_position := l_proc_annotations(c_test_case_annotations(i)).first;
+          while l_position is not null loop
+            add_annotation_ignored_warning(
+              a_suite, c_test_case_annotations(i), 'Annotation %%% can only be used with "--%test".', l_position, a_procedure_name
+            );
+            l_position := l_proc_annotations(c_test_case_annotations(i)).next(l_position);
+          end loop;
+        end if;
+      end loop;
       return;
     end if;
     warning_on_duplicate_annot( a_suite, l_proc_annotations, gc_test, a_procedure_name);
@@ -485,9 +589,34 @@ create or replace noneditionable package body ut_suite_builder is
       l_test.disabled_reason := l_annotation_texts(l_annotation_texts.first);
     end if;
 
+    if l_proc_annotations.exists(gc_testcasesource) then
+      warning_on_duplicate_annot( a_suite, l_proc_annotations, gc_testcasesource, a_procedure_name);
+      l_annotation_texts := l_proc_annotations(gc_testcasesource);
+      if l_proc_annotations.exists(gc_testcase) then
+        add_annotation_ignored_warning(
+          a_suite, gc_testcasesource, 'Annotation %%% cannot be used together with "--%testcase".', l_annotation_texts.first, a_procedure_name
+        );
+      elsif trim(l_annotation_texts(l_annotation_texts.first)) is null then
+        add_annotation_ignored_warning(
+          a_suite, gc_testcasesource, 'Annotation %%% requires a query.', l_annotation_texts.first, a_procedure_name
+        );
+      else
+        l_test.item.call_source := trim(l_annotation_texts(l_annotation_texts.first));
+      end if;
+    end if;
+
     if l_proc_annotations.exists(gc_testcase) then
-      add_test_cases(a_suite_items, l_test, l_proc_annotations(gc_testcase));
+      add_test_cases(a_suite, a_suite_items, l_test, a_annotations, l_proc_annotations(gc_testcase));
     else
+      if l_test.item.call_source is null then
+        l_error := get_arguments_error(a_annotations, a_procedure_name, null, a_check_existence => false);
+        if l_error is not null then
+          a_suite.put_warning(
+            'Test procedure cannot be called without arguments: ' || l_error || '. Use "--%testcase" to provide arguments.',
+            a_procedure_name, l_proc_annotations(gc_test).first
+          );
+        end if;
+      end if;
       a_suite_items.extend;
       a_suite_items( a_suite_items.last ) := l_test;
     end if;
@@ -722,6 +851,7 @@ create or replace noneditionable package body ut_suite_builder is
     l_result.owner := a_annotations.owner;
     l_result.name := a_annotations.name;
     l_result.parse_time := a_annotations.parse_time;
+    l_result.parameters := a_annotations.parameters;
     while l_position is not null and l_position <= a_end_context_pos loop
       l_result.by_line(l_position) := a_annotations.by_line(l_position);
       l_procedure_name  := l_result.by_line(l_position).procedure_name;
@@ -943,6 +1073,7 @@ create or replace noneditionable package body ut_suite_builder is
       l_suite := ut_suite(l_annotations.owner, l_annotations.name, l_annotation_pos);
       l_suite.description := l_annotations.by_name( gc_suite)( l_annotation_pos);
       l_suite.parse_time  := l_annotations.parse_time;
+      l_annotations.parameters := ut_metadata.get_package_parameters(upper(l_annotations.owner), upper(l_annotations.name));
       warning_on_unknown_annotations(l_suite, l_annotations.by_line);
 
       warning_on_duplicate_annot( l_suite, l_annotations.by_name, gc_suite );

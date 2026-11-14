@@ -128,6 +128,7 @@ end;
 | `--%displayname( <description> )`                          | Package/procedure | Human-readable and meaningful description of a context/suite/test. Overrides the `<description>` provided with `suite`/`test`/`context` annotation. This annotation is redundant and might be removed in future releases.                                                                                                    |
 | `--%test( <description> )`                                 | Procedure         | Denotes that the annotated procedure is a unit test procedure.  Optional test description can be provided (see `displayname`).                                                                                                                                                                                               |
 | `--%testcase( <argument>[,...] )`                          | Procedure         | Runs the annotated `%test` procedure once per `%testcase` annotation, passing the arguments to the procedure. See [Testcase](#testcase).                                                                                                                                                                                    |
+| `--%testcasesource( <query> )`                             | Procedure         | Runs the annotated `%test` procedure once per row of the query, passing the columns to the procedure. See [Testcasesource](#testcasesource).                                                                                                                                                                               |
 | `--%throws( <exception>[,...] )`                           | Procedure         | Denotes that the annotated test procedure must throw one of the exceptions provided. Supported forms of exceptions are: numeric literals, numeric constant names, exception constant names, predefined Oracle exception names.                                                                                               |
 | `--%beforeall`                                             | Procedure         | Denotes that the annotated procedure should be executed once before all elements of the suite.                                                                                                                                                                                                                               |
 | `--%beforeall( [[<owner>.]<package>.]<procedure>[( <arguments> )][,...] )`  | Package           | Denotes that the mentioned procedure(s) should be executed once before all elements of the suite.                                                                                                                                                                                                                            |
@@ -347,7 +348,7 @@ Use it when the same check needs to be done for several inputs, for example boun
 - Each `--%testcase` annotation becomes a separate test. It is reported, counted and run on its own, with its own `--%beforeeach`/`--%beforetest`/`--%aftertest`/`--%aftereach` calls and its own rollback.
 - The annotation text is passed to the test procedure as its argument list. The arguments are PL/SQL expressions, so `true`, `null`, `date '2024-02-29'`, constants, function calls and object constructors can be used.
 - Arguments can be passed by position or by name (`a_amount => 750`). Parameters with default values can be omitted.
-- The test cases of a procedure are named `<procedure>[1]`, `<procedure>[2]`, ... in the order of the annotations. Running the procedure by path, for example `ut.run('test_discount.discount')`, runs all of its test cases.
+- The test cases of a procedure are named `<procedure>[1]`, `<procedure>[2]`, ... in the order of the annotations. Running the procedure by path, for example `ut.run('test_discount.discount')`, runs all of its test cases; `ut.run('test_discount.discount[2]')` runs only the second one.
 - `--%tags`, `--%throws`, `--%rollback`, `--%disabled` and `--%beforetest`/`--%aftertest` of the test procedure apply to every test case.
 
 The description of the `--%test` annotation can refer to the arguments of a test case:
@@ -413,6 +414,87 @@ Finished in .039832 seconds
 
 The whole annotation must fit in one line and end with the closing bracket; a comment after the annotation is not allowed.
 Using `--%testcase` on a procedure without `--%test` gives a warning and the annotation is ignored.
+
+When the suite is built, the arguments of each test case are checked against the parameters of the test procedure:
+the number of arguments, the parameter names, parameters without default value and positional arguments after named ones.
+A test case with invalid arguments gives a warning and is skipped; the numbers of the other test cases don't change.
+Types are not checked, as PL/SQL converts many types implicitly. A wrong type shows up as an error when the test case runs.
+A `--%test` procedure that has parameters without default value and no test cases gives a warning, as it can't be called.
+
+### Testcasesource
+
+The `--%testcasesource` annotation runs a `--%test` procedure once for each row of a query.
+It suits test data that is easier to keep in a table, including complex data such as object types and collections.
+
+- The query runs when the suite runs, after its `--%beforeall` procedures, so it sees the data they create. Each test case is rolled back as usual.
+- Columns named like a parameter of the test procedure are passed to that parameter. Other columns are not passed, but can be used in the description.
+  If no column is named like a parameter, all columns are passed by position.
+- Each row becomes a separate test, named `<procedure>[1]`, `<procedure>[2]`, ... in the order the query returns the rows. Use `order by` to keep the order stable.
+- The description can refer to the values of a row with `{1}`, `{2}`, ... (column position) and `{<column name>}`.
+  Values of object types and collections are shown as `<TYPE_NAME>`. Without any placeholder, the values are appended to the description in brackets.
+- If the query fails, the test is reported as errored with the error of the query. If it returns no rows, the suite gets a warning.
+- `--%testcasesource` can't be combined with `--%testcase` on the same procedure.
+- Running a single row by path, for example `ut.run('test_bulk_discount.bulk_discount[2]')`, is not supported, as the rows are only known when the suite runs.
+- The query runs with the privileges of the user running the tests. Qualify the tables with the owner if the tests run from another schema.
+
+```sql linenums="1"
+create or replace type order_line force as object (sku varchar2(20), qty number, unit_price number);
+/
+create or replace type order_lines force as table of order_line;
+/
+create table test_bulk_discount_cases (
+  label      varchar2(100),
+  a_lines    order_lines,
+  a_expected number
+) nested table a_lines store as test_bulk_discount_lines;
+
+create or replace package test_bulk_discount as
+  --%suite(Bulk discount)
+  --%beforeall(add_cases)
+
+  procedure add_cases;
+
+  --%test(Bulk discount for {label} is {a_expected})
+  --%testcasesource(select label, a_lines, a_expected from test_bulk_discount_cases order by label)
+  procedure bulk_discount(a_lines order_lines, a_expected number);
+end;
+/
+create or replace package body test_bulk_discount as
+  function discount(a_lines order_lines) return number is
+    l_total number := 0;
+  begin
+    for i in 1 .. a_lines.count loop
+      l_total := l_total + a_lines(i).qty * a_lines(i).unit_price;
+    end loop;
+    return case when l_total >= 5000 then 0.03 else 0 end;
+  end;
+
+  procedure add_cases is
+  begin
+    insert into test_bulk_discount_cases values ('a large order', order_lines(order_line('A', 20, 150), order_line('B', 10, 300)), 0.03);
+    insert into test_bulk_discount_cases values ('a small order', order_lines(order_line('A', 1, 100)), 0);
+    insert into test_bulk_discount_cases values ('an empty order', order_lines(), 0);
+  end;
+
+  procedure bulk_discount(a_lines order_lines, a_expected number) is
+  begin
+    ut.expect(discount(a_lines)).to_equal(a_expected);
+  end;
+end;
+/
+```
+```sql linenums="1"
+exec ut.run('test_bulk_discount');
+```
+```
+Bulk discount
+  Bulk discount for a large order is .03 [.014 sec]
+  Bulk discount for a small order is 0 [.008 sec]
+  Bulk discount for an empty order is 0 [.008 sec]
+ 
+Finished in .068613 seconds
+3 tests, 0 failed, 0 errored, 0 disabled, 0 warning(s)
+```
 
 ### Disabled
 Marks annotated suite package or test procedure as disabled.

@@ -174,5 +174,121 @@ create or replace noneditionable type body ut_test as
     end loop;
     return l_results;
   end;
+
+  member function has_test_case_source(self in ut_test) return boolean is
+  begin
+    return self.item.call_source is not null and instr(self.name, '[') = 0;
+  end;
+
+  member function get_source_test_cases(self in ut_test) return ut_suite_items is
+    -- rownum numbers the rows in the order the query returns them; each test case selects its row by that number
+    c_rows_query constant varchar2(32767) :=
+      'select ut_q.*, rownum ut_test_case_row from (' || self.item.call_source || ') ut_q';
+    l_parameters ut_metadata.tt_parameters :=
+      ut_metadata.get_package_parameters(upper(self.item.owner_name), upper(self.item.object_name));
+    l_result     ut_suite_items := ut_suite_items();
+    l_cursor     integer;
+    l_status     integer;
+    l_columns    dbms_sql.desc_tab3;
+    l_count      integer;
+    l_named      boolean := false;
+    l_arguments  varchar2(4000);
+    l_select     varchar2(32767);
+    l_values     ut_varchar2_list;
+    l_value      varchar2(4000);
+    l_test       ut_test;
+    l_row_no     integer := 0;
+
+    function is_parameter(a_column_name varchar2) return boolean is
+    begin
+      for i in 1 .. l_parameters.count loop
+        if l_parameters(i).procedure_name = upper(self.item.procedure_name)
+          and l_parameters(i).parameter_name = a_column_name then
+          return true;
+        end if;
+      end loop;
+      return false;
+    end;
+
+    function display_expression(a_column dbms_sql.desc_rec3) return varchar2 is
+      l_column varchar2(200) := 'ut_r."' || a_column.col_name || '"';
+    begin
+      return
+        case
+          when a_column.col_type in (1, 2, 12, 96, 100, 101, 180, 181, 182, 183, 231) then 'to_char(' || l_column || ')'
+          when a_column.col_type = 112 then 'dbms_lob.substr(' || l_column || ', 100)'
+          when a_column.col_type = 252 then 'case when ' || l_column || ' then ''true'' when not ' || l_column || ' then ''false'' end'
+          else '''<' || nvl(a_column.col_type_name, 'value') || '>'''
+        end;
+    end;
+
+    function get_description(a_values ut_varchar2_list) return varchar2 is
+      l_description varchar2(32767) := self.description;
+    begin
+      if regexp_like(self.description, '\{[[:alnum:]_$#]+\}') then
+        for i in 1 .. a_values.count loop
+          l_description := replace(l_description, '{' || i || '}', a_values(i));
+          l_description := replace(l_description, '{' || l_columns(i).col_name || '}', a_values(i));
+          l_description := replace(l_description, '{' || lower(l_columns(i).col_name) || '}', a_values(i));
+        end loop;
+      else
+        for i in 1 .. a_values.count loop
+          l_description := l_description || case when i = 1 then ' (' else ', ' end || a_values(i);
+        end loop;
+        l_description := l_description || case when a_values.count > 0 then ')' end;
+      end if;
+      return substr(l_description, 1, 4000);
+    end;
+  begin
+    l_cursor := dbms_sql.open_cursor;
+    begin
+      dbms_sql.parse(l_cursor, 'select * from (' || self.item.call_source || ')', dbms_sql.native);
+      dbms_sql.describe_columns3(l_cursor, l_count, l_columns);
+      -- columns named like parameters are passed by name, otherwise all columns are passed by position
+      for i in 1 .. l_count loop
+        l_named := l_named or is_parameter(l_columns(i).col_name);
+      end loop;
+      for i in 1 .. l_count loop
+        if not l_named or is_parameter(l_columns(i).col_name) then
+          l_arguments := l_arguments || case when l_arguments is not null then ', ' end
+            || case when l_named then '"' || l_columns(i).col_name || '" => ' end || 'r."' || l_columns(i).col_name || '"';
+        end if;
+        l_select := l_select || case when i > 1 then ', ' end || display_expression(l_columns(i));
+      end loop;
+
+      dbms_sql.parse(
+        l_cursor, 'select ' || l_select || ' from (' || c_rows_query || ') ut_r order by ut_r.ut_test_case_row', dbms_sql.native
+      );
+      for i in 1 .. l_count loop
+        dbms_sql.define_column(l_cursor, i, l_value, 4000);
+      end loop;
+      l_status := dbms_sql.execute(l_cursor);
+      while dbms_sql.fetch_rows(l_cursor) > 0 loop
+        l_row_no := l_row_no + 1;
+        l_values := ut_varchar2_list();
+        for i in 1 .. l_count loop
+          dbms_sql.column_value(l_cursor, i, l_value);
+          l_values.extend;
+          l_values(i) := nvl(l_value, 'null');
+        end loop;
+        l_test := self;
+        l_test.name := self.name || '[' || l_row_no || ']';
+        l_test.path := self.path || '[' || l_row_no || ']';
+        l_test.description := get_description(l_values);
+        l_test.item.call_source := 'select * from (' || c_rows_query || ') where ut_test_case_row = ' || l_row_no;
+        l_test.item.call_arguments := l_arguments;
+        l_result.extend;
+        l_result(l_result.last) := l_test;
+      end loop;
+      dbms_sql.close_cursor(l_cursor);
+    exception
+      when others then
+        if dbms_sql.is_open(l_cursor) then
+          dbms_sql.close_cursor(l_cursor);
+        end if;
+        raise;
+    end;
+    return l_result;
+  end;
 end;
 /

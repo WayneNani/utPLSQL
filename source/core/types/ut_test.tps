@@ -65,6 +65,14 @@ create or replace noneditionable type ut_test force under ut_suite_item (
   overriding member procedure mark_as_errored(self in out nocopy ut_test, a_error_stack_trace varchar2),
   overriding member function get_error_stack_traces(self ut_test) return ut_varchar2_list,
   overriding member function get_serveroutputs return clob,
-  member function get_failed_expectation_lines return ut_varchar2_rows
+  member function get_failed_expectation_lines return ut_varchar2_rows,
+  /**
+  * True for a test with a --%testcasesource query that is not yet split into its test cases.
+  */
+  member function has_test_case_source(self in ut_test) return boolean,
+  /**
+  * Runs the --%testcasesource query and returns one test for each row.
+  */
+  member function get_source_test_cases(self in ut_test) return ut_suite_items
 )
 /

@@ -69,6 +69,18 @@ create or replace noneditionable package body ut_metadata as
       return false;
   end;
 
+  function get_package_parameters(a_owner_name varchar2, a_package_name varchar2) return tt_parameters is
+    l_result    tt_parameters;
+    l_view_name varchar2(200) := get_dba_view('dba_arguments');
+  begin
+    execute immediate
+      'select /*+ no_parallel */ object_name, nvl(overload, ''0''), argument_name, defaulted from ' || l_view_name ||
+      ' where owner = :a_owner_name and package_name = :a_package_name and data_level = 0 and argument_name is not null' ||
+      ' order by object_name, overload, position'
+      bulk collect into l_result using a_owner_name, a_package_name;
+    return l_result;
+  end;
+
   function get_source_definition_line(a_owner varchar2, a_object_name varchar2, a_line_no integer) return varchar2 is
     l_view_name varchar2(128) := get_source_view_name();
     l_line all_source.text%type;

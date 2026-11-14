@@ -1769,14 +1769,18 @@ procedure tag_exclude_run_fun_pth_lst_lg is
   procedure create_suite_with_test_cases is
     pragma autonomous_transaction;
   begin
+    execute immediate 'create or replace type test_case_pair force as object (amount number, half number)';
+    execute immediate 'create table test_case_rows (a_amount number, a_half number)';
     execute immediate q'~create or replace package test_cases_in_ut3_user is
       --%suite(Test cases)
       --%beforeall(start_log('all'))
+      --%beforeall(fill_test_case_rows)
 
       g_log varchar2(4000);
 
       procedure start_log(a_text varchar2);
       procedure log_call(a_text varchar2, a_number number);
+      procedure fill_test_case_rows;
 
       --%test(Half of {1} is {2})
       --%testcase(2000, 1000)
@@ -1788,6 +1792,22 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       --%beforetest(log_call('a, b', 1), log_call(a_text => q'{x)}', a_number => 2))
       --%aftertest(log_call('after', 3))
       procedure before_after_args;
+
+      --%test(Half of {a_amount} from table is {a_half})
+      --%testcasesource(select a_amount, a_half from test_case_rows order by a_amount)
+      procedure half_from_table(a_amount number, a_half number);
+
+      --%test(Half of a pair)
+      --%testcasesource(select test_case_pair(8, 4) a_pair from dual)
+      procedure pair_half(a_pair test_case_pair);
+
+      --%test(Source without rows)
+      --%testcasesource(select 1 a_value from dual where 1 = 0)
+      procedure no_rows(a_value number);
+
+      --%test(Source that fails)
+      --%testcasesource(select a_value from table_that_does_not_exist)
+      procedure broken_source(a_value number);
     end;~';
     execute immediate q'~create or replace package body test_cases_in_ut3_user is
       procedure start_log(a_text varchar2) is
@@ -1798,6 +1818,12 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       begin
         g_log := g_log || '[' || a_text || ':' || a_number || ']';
       end;
+      procedure fill_test_case_rows is
+      begin
+        insert into test_case_rows values (10, 5);
+        insert into test_case_rows values (3, 2);
+        insert into test_case_rows values (4, 2);
+      end;
       procedure half(a_amount number, a_half number) is
       begin
         ut3_develop.ut.expect(a_amount / 2).to_equal(a_half);
@@ -1806,6 +1832,22 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       begin
         ut3_develop.ut.expect(g_log).to_equal('[all][a, b:1][x):2]');
       end;
+      procedure half_from_table(a_amount number, a_half number) is
+      begin
+        ut3_develop.ut.expect(a_amount / 2).to_equal(a_half);
+      end;
+      procedure pair_half(a_pair test_case_pair) is
+      begin
+        ut3_develop.ut.expect(a_pair.amount / 2).to_equal(a_pair.half);
+      end;
+      procedure no_rows(a_value number) is
+      begin
+        null;
+      end;
+      procedure broken_source(a_value number) is
+      begin
+        null;
+      end;
     end;~';
   end;
 
@@ -1813,6 +1855,8 @@ procedure tag_exclude_run_fun_pth_lst_lg is
     pragma autonomous_transaction;
   begin
     execute immediate 'drop package test_cases_in_ut3_user';
+    execute immediate 'drop table test_case_rows purge';
+    execute immediate 'drop type test_case_pair';
   end;
 
   procedure run_test_cases is
@@ -1827,7 +1871,11 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       '%Half of 2000 is 1000 [%' ||
       '%Half of 10 is 5 [%' ||
       '%Half of 1 is 1 [% (FAILED - 1)%' ||
-      '%4 tests, 1 failed, 0 errored%'
+      '%Half of 3 from table is 2 [% (FAILED - 2)%' ||
+      '%Half of 4 from table is 2 [%' ||
+      '%Half of 10 from table is 5 [%' ||
+      '%Half of a pair (<%TEST_CASE_PAIR>) [%' ||
+      '%9 tests, 2 failed, 1 errored%'
     );
   end;
 
@@ -1851,6 +1899,70 @@ procedure tag_exclude_run_fun_pth_lst_lg is
     l_actual := ut3_tester_helper.main_helper.table_to_clob(l_results);
     --Assert
     ut.expect(l_actual).to_be_like('%1 tests, 0 failed, 0 errored%');
+  end;
+
+  procedure run_single_test_case is
+    l_results ut3_develop.ut_varchar2_list;
+  begin
+    --Act
+    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.half[3]'));
+    --Assert
+    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like('%Half of 1 is 1 [%1 tests, 1 failed, 0 errored%');
+
+    select * bulk collect into l_results from table(ut3_develop.ut.run(':test_cases_in_ut3_user.half[2]'));
+    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like('%Half of 10 is 5 [%1 tests, 0 failed, 0 errored%');
+
+    select * bulk collect into l_results from table(ut3_develop.ut.run(':test_cases_in_ut3_user.half'));
+    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like('%3 tests, 1 failed, 0 errored%');
+  end;
+
+  procedure run_test_case_suffix_on_package is
+    l_results ut3_develop.ut_varchar2_list;
+  begin
+    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user[2]'));
+  end;
+
+  procedure run_test_case_source is
+    l_results ut3_develop.ut_varchar2_list;
+  begin
+    --Act
+    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.half_from_table'));
+    --Assert
+    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
+      '%Half of 3 from table is 2 [% (FAILED - 1)%Half of 4 from table is 2 [%Half of 10 from table is 5 [%' ||
+      '%1) half_from_table[1]%3 tests, 1 failed, 0 errored%'
+    );
+  end;
+
+  procedure run_test_case_source_no_rows is
+    l_results ut3_develop.ut_varchar2_list;
+  begin
+    --Act
+    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.no_rows'));
+    --Assert
+    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
+      '%The --%testcasesource query returned no rows.%0 tests, 0 failed, 0 errored, 0 disabled, 1 warning(s)%'
+    );
+  end;
+
+  procedure run_test_case_source_failing is
+    l_results ut3_develop.ut_varchar2_list;
+  begin
+    --Act
+    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.broken_source'));
+    --Assert
+    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
+      '%The --%testcasesource query failed.%TABLE_THAT_DOES_NOT_EXIST%1 tests, 0 failed, 1 errored%'
+    );
+  end;
+
+  procedure run_test_case_source_object is
+    l_results ut3_develop.ut_varchar2_list;
+  begin
+    --Act
+    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.pair_half'));
+    --Assert
+    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like('%1 tests, 0 failed, 0 errored%');
   end;
 
   procedure report_test_case_names is

@@ -199,7 +199,32 @@ create or replace package test_suite_builder is
       --%test(Gives warning when --%testcase is used without --%test)
       procedure testcase_without_test;
 
+      --%test(Stores the --%testcasesource query in the test)
+      procedure testcasesource_stores_query;
+
+      --%test(Gives warning when --%testcasesource is used with --%testcase, without a query or without --%test)
+      procedure testcasesource_invalid_use;
+
   --%endcontext
+
+  --%context(test case argument checks)
+
+      --%beforeall(create_test_case_args_package)
+      --%afterall(drop_test_case_args_package)
+
+      --%test(Gives a warning for each test case with invalid arguments and skips it)
+      procedure testcase_invalid_arguments;
+
+      --%test(Accepts arguments that fit one of the overloads)
+      procedure testcase_overloads;
+
+      --%test(Gives a warning when a test procedure has parameters without default value and no test cases)
+      procedure test_without_required_args;
+
+  --%endcontext
+
+  procedure create_test_case_args_package;
+  procedure drop_test_case_args_package;
 
   --%context(--%bad_annotation)
 

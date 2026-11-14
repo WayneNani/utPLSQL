@@ -55,7 +55,8 @@ create or replace noneditionable type body ut_executable is
     a_ignored_exception_names in ut_varchar2_rows := null,
     a_ignored_exception_numbers in ut_varchar2_rows :=null)
   return boolean is
-    l_statement                   varchar2(4000);
+    l_statement                   varchar2(32767);
+    l_call                        varchar2(32767);
     l_status                      number;
     l_cursor_number               number;
     l_completed_without_errors    boolean := true;
@@ -119,6 +120,21 @@ create or replace noneditionable type body ut_executable is
 
     l_completed_without_errors := is_defined();
     if l_completed_without_errors then
+      l_call := self.form_name( a_skip_current_user_schema => true ) || case when self.call_arguments is not null then '(' || self.call_arguments || ')' end || ';';
+      if self.call_source is not null then
+        l_call :=
+          'declare' || chr(10) ||
+          '      l_row_found boolean := false;' || chr(10) ||
+          '    begin' || chr(10) ||
+          '      for r in (' || self.call_source || ') loop' || chr(10) ||
+          '        l_row_found := true;' || chr(10) ||
+          '        ' || l_call || chr(10) ||
+          '      end loop;' || chr(10) ||
+          '      if not l_row_found then' || chr(10) ||
+          '        raise_application_error(-20000, ''The row of this test case is no longer returned by the --%testcasesource query.'');' || chr(10) ||
+          '      end if;' || chr(10) ||
+          '    end;';
+      end if;
       l_statement :=
       'declare' || chr(10) ||
       '  l_error_stack                varchar2(32767);' || chr(10) ||
@@ -126,7 +142,7 @@ create or replace noneditionable type body ut_executable is
       '  l_ignored_exception_detected integer := 0;' || chr(10) ||
       'begin' || chr(10) ||
       '  begin' || chr(10) ||
-      '    ' || self.form_name( a_skip_current_user_schema => true ) || case when self.call_arguments is not null then '(' || self.call_arguments || ')' end || ';' || chr(10) ||
+      '    ' || l_call || chr(10) ||
       '  exception' || chr(10) ||
               case when a_ignored_exception_names is not empty then
       '    when ' || ut_utils.table_to_clob( a_ignored_exception_names, ' or ' ) || ' then ' || chr(10) ||
