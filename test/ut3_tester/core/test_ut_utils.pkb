@@ -372,6 +372,58 @@ end;';
     ut.expect(anydata.convertcollection(l_list_to_be_empty)).to_be_empty;
   end;
 
+  procedure expect_split(a_text varchar2, a_delimiter varchar2, a_expected ut3_develop.ut_varchar2_list) is
+  begin
+    ut.expect(anydata.convertcollection(ut3_develop.ut_utils.split_top_level(a_text, a_delimiter)))
+      .to_equal(anydata.convertcollection(a_expected));
+  end;
+
+  procedure split_top_level_parentheses is
+  begin
+    expect_split(
+      q'[t_lines(t_line('A', 20, 150), t_line('B', 10, 300)), nvl(x, 1), 0.03]', ',',
+      ut3_develop.ut_varchar2_list(q'[t_lines(t_line('A', 20, 150), t_line('B', 10, 300))]', 'nvl(x, 1)', '0.03')
+    );
+  end;
+
+  procedure split_top_level_strings is
+  begin
+    expect_split(
+      q'['WELCOME, valid', 'it''s, ok', 5]', ',',
+      ut3_develop.ut_varchar2_list(q'['WELCOME, valid']', q'['it''s, ok']', '5')
+    );
+  end;
+
+  procedure split_top_level_q_strings is
+  begin
+    expect_split(
+      q'[q'{a, (b}', n'x,y', nq'<z,>', Q'!c,!']', ',',
+      ut3_develop.ut_varchar2_list(q'[q'{a, (b}']', q'[n'x,y']', q'[nq'<z,>']', q'[Q'!c,!']')
+    );
+  end;
+
+  procedure split_top_level_quoted_ident is
+  begin
+    expect_split('"Mixed.Case", other', ',', ut3_develop.ut_varchar2_list('"Mixed.Case"', 'other'));
+    expect_split('"My.Pkg".proc', '.', ut3_develop.ut_varchar2_list('"My.Pkg"', 'proc'));
+  end;
+
+  procedure split_top_level_trims is
+  begin
+    expect_split(' a ,, b ', ',', ut3_develop.ut_varchar2_list('a', null, 'b'));
+  end;
+
+  procedure split_top_level_null is
+  begin
+    ut.expect(anydata.convertcollection(ut3_develop.ut_utils.split_top_level(null))).to_be_empty;
+  end;
+
+  procedure split_top_level_unterminated is
+  begin
+    expect_split(q'[1, 'open, 2]', ',', ut3_develop.ut_varchar2_list('1', q'['open, 2]'));
+    expect_split(q'[1, q'[open, 2]', ',', ut3_develop.ut_varchar2_list('1', q'[q'[open, 2]'));
+  end;
+
   procedure replace_multiline_comments
   is
     l_source   clob;

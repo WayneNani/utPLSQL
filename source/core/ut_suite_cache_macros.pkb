@@ -29,6 +29,7 @@ create or replace noneditionable package body ut_suite_cache_macros as
                and i.object_name like replace(replace(upper(p.object_name), '_', '\_'), '*', '%') escape '\'
                and ( p.procedure_name is null or p.procedure_name = '*'
                      or i.name like replace(replace(upper(p.procedure_name), '_', '\_'), '*', '%') escape '\'
+                     or i.name like replace(replace(upper(p.procedure_name), '_', '\_'), '*', '%') || '[%' escape '\'
                    )
              )
           or ( instr(p.suite_path, '*') = 0

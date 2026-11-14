@@ -103,6 +103,9 @@ create or replace package test_suite_builder is
       --%test(Gives warning on before/after all/each annotations mixed with test)
       procedure before_after_mixed_with_test;
 
+      --%test(Supports arguments for standalone before/after all/each procedures)
+      procedure standalone_bef_aft_arguments;
+
   --%endcontext
 
   --%context(--%context annotation)
@@ -179,6 +182,22 @@ create or replace package test_suite_builder is
 
       --%test(Supports mix of procedure and package.procedure)
       procedure before_aftertest_mixed_syntax;
+
+      --%test(Supports arguments for beforetest/aftertest procedures)
+      procedure before_aftertest_arguments;
+
+  --%endcontext
+
+  --%context(--%testcase annotation)
+
+      --%test(Creates a separate test for each test case)
+      procedure testcase_creates_test_per_case;
+
+      --%test(Replaces argument placeholders in the test description)
+      procedure testcase_description_placeholders;
+
+      --%test(Gives warning when --%testcase is used without --%test)
+      procedure testcase_without_test;
 
   --%endcontext
 

@@ -232,6 +232,52 @@ create or replace noneditionable package body ut_utils is
     return l_result;
   end;
 
+  function split_top_level(a_text varchar2, a_delimiter varchar2 := ',') return ut_varchar2_list is
+    l_result ut_varchar2_list := ut_varchar2_list();
+    l_length binary_integer := length(a_text);
+    l_start  binary_integer := 1;
+    l_pos    binary_integer := 1;
+    l_depth  binary_integer := 0;
+    l_char   varchar2(1 char);
+    procedure add_element(a_end binary_integer) is
+    begin
+      l_result.extend;
+      l_result(l_result.last) := trim(substr(a_text, l_start, a_end - l_start));
+    end;
+  begin
+    if a_text is null then
+      return l_result;
+    end if;
+    while l_pos <= l_length loop
+      l_char := substr(a_text, l_pos, 1);
+      if lower(l_char) = 'q' and substr(a_text, l_pos + 1, 1) = '''' then
+        l_pos := instr(a_text, translate(substr(a_text, l_pos + 2, 1), '[{(<', ']})>') || '''', l_pos + 3);
+        exit when l_pos = 0;
+        l_pos := l_pos + 1;
+      elsif l_char = '''' then
+        loop
+          l_pos := instr(a_text, '''', l_pos + 1);
+          exit when l_pos = 0 or substr(a_text, l_pos + 1, 1) is null or substr(a_text, l_pos + 1, 1) != '''';
+          l_pos := l_pos + 1;
+        end loop;
+        exit when l_pos = 0;
+      elsif l_char = '"' then
+        l_pos := instr(a_text, '"', l_pos + 1);
+        exit when l_pos = 0;
+      elsif l_char = '(' then
+        l_depth := l_depth + 1;
+      elsif l_char = ')' then
+        l_depth := l_depth - 1;
+      elsif l_char = a_delimiter and l_depth = 0 then
+        add_element(l_pos);
+        l_start := l_pos + 1;
+      end if;
+      l_pos := l_pos + 1;
+    end loop;
+    add_element(l_length + 1);
+    return l_result;
+  end;
+
   function string_table_to_table(a_list ut_varchar2_list, a_delimiter varchar2:= chr(10), a_skip_leading_delimiter varchar2 := 'N') return ut_varchar2_list is
     l_result ut_varchar2_list;
   begin

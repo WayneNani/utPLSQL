@@ -127,17 +127,18 @@ end;
 | `--%suitepath( <path> )`                                   | Package           | Similar to java package. The annotation allows logical grouping of suites into hierarchies.                                                                                                                                                                                                                                  |
 | `--%displayname( <description> )`                          | Package/procedure | Human-readable and meaningful description of a context/suite/test. Overrides the `<description>` provided with `suite`/`test`/`context` annotation. This annotation is redundant and might be removed in future releases.                                                                                                    |
 | `--%test( <description> )`                                 | Procedure         | Denotes that the annotated procedure is a unit test procedure.  Optional test description can be provided (see `displayname`).                                                                                                                                                                                               |
+| `--%testcase( <argument>[,...] )`                          | Procedure         | Runs the annotated `%test` procedure once per `%testcase` annotation, passing the arguments to the procedure. See [Testcase](#testcase).                                                                                                                                                                                    |
 | `--%throws( <exception>[,...] )`                           | Procedure         | Denotes that the annotated test procedure must throw one of the exceptions provided. Supported forms of exceptions are: numeric literals, numeric constant names, exception constant names, predefined Oracle exception names.                                                                                               |
 | `--%beforeall`                                             | Procedure         | Denotes that the annotated procedure should be executed once before all elements of the suite.                                                                                                                                                                                                                               |
-| `--%beforeall( [[<owner>.]<package>.]<procedure>[,...] )`  | Package           | Denotes that the mentioned procedure(s) should be executed once before all elements of the suite.                                                                                                                                                                                                                            |
+| `--%beforeall( [[<owner>.]<package>.]<procedure>[( <arguments> )][,...] )`  | Package           | Denotes that the mentioned procedure(s) should be executed once before all elements of the suite.                                                                                                                                                                                                                            |
 | `--%afterall`                                              | Procedure         | Denotes that the annotated procedure should be executed once after all elements of the suite.                                                                                                                                                                                                                                |
-| `--%afterall( [[<owner>.]<package>.]<procedure>[,...] )`   | Package           | Denotes that the mentioned procedure(s) should be executed once after all elements of the suite.                                                                                                                                                                                                                             |
+| `--%afterall( [[<owner>.]<package>.]<procedure>[( <arguments> )][,...] )`   | Package           | Denotes that the mentioned procedure(s) should be executed once after all elements of the suite.                                                                                                                                                                                                                             |
 | `--%beforeeach`                                            | Procedure         | Denotes that the annotated procedure should be executed before each `%test` procedure in the suite.                                                                                                                                                                                                                          |
-| `--%beforeeach( [[<owner>.]<package>.]<procedure>[,...] )` | Package           | Denotes that the mentioned procedure(s) should be executed before each `%test` procedure in the suite.                                                                                                                                                                                                                       |
+| `--%beforeeach( [[<owner>.]<package>.]<procedure>[( <arguments> )][,...] )` | Package           | Denotes that the mentioned procedure(s) should be executed before each `%test` procedure in the suite.                                                                                                                                                                                                                       |
 | `--%aftereach`                                             | Procedure         | Denotes that the annotated procedure should be executed after each `%test` procedure in the suite.                                                                                                                                                                                                                           |
-| `--%aftereach( [[<owner>.]<package>.]<procedure>[,...] )`  | Package           | Denotes that the mentioned procedure(s) should be executed after each `%test` procedure in the suite.                                                                                                                                                                                                                        |
-| `--%beforetest( [[<owner>.]<package>.]<procedure>[,...] )` | Procedure         | Denotes that mentioned procedure(s) should be executed before the annotated `%test` procedure.                                                                                                                                                                                                                               |
-| `--%aftertest( [[<owner>.]<package>.]<procedure>[,...] )`  | Procedure         | Denotes that mentioned procedure(s) should be executed after the annotated `%test` procedure.                                                                                                                                                                                                                                |
+| `--%aftereach( [[<owner>.]<package>.]<procedure>[( <arguments> )][,...] )`  | Package           | Denotes that the mentioned procedure(s) should be executed after each `%test` procedure in the suite.                                                                                                                                                                                                                        |
+| `--%beforetest( [[<owner>.]<package>.]<procedure>[( <arguments> )][,...] )` | Procedure         | Denotes that mentioned procedure(s) should be executed before the annotated `%test` procedure.                                                                                                                                                                                                                               |
+| `--%aftertest( [[<owner>.]<package>.]<procedure>[( <arguments> )][,...] )`  | Procedure         | Denotes that mentioned procedure(s) should be executed after the annotated `%test` procedure.                                                                                                                                                                                                                                |
 | `--%rollback( <type> )`                                    | Package/procedure | Defines transaction control. Supported values: `auto`(default) - a savepoint is created before invocation of each "before block" is and a rollback to specific savepoint is issued after each "after" block; `manual` - rollback is never issued automatically. Property can be overridden for child element (test in suite) |
 | `--%disabled( <reason> )`                                  | Package/procedure | Used to disable a suite, whole context or a test. Disabled suites/contexts/tests do not get executed, they are however marked and reported as disabled in a test run. The reason that will be displayed next to disabled tests is decided based on hierarchy suites -> context -> test                                       |
 | `--%context( <description> )`                              | Package           | Denotes start of a named context (sub-suite) in a suite package an optional description for context can be provided.                                                                                                                                                                                                         |
@@ -337,6 +338,81 @@ Warnings:
 Finished in .008815 seconds
 1 tests, 0 failed, 0 errored, 0 disabled, 1 warning(s)
 ```
+
+### Testcase
+
+The `--%testcase` annotation runs a `--%test` procedure once for each set of arguments.
+Use it when the same check needs to be done for several inputs, for example boundary values.
+
+- Each `--%testcase` annotation becomes a separate test. It is reported, counted and run on its own, with its own `--%beforeeach`/`--%beforetest`/`--%aftertest`/`--%aftereach` calls and its own rollback.
+- The annotation text is passed to the test procedure as its argument list. The arguments are PL/SQL expressions, so `true`, `null`, `date '2024-02-29'`, constants, function calls and object constructors can be used.
+- Arguments can be passed by position or by name (`a_amount => 750`). Parameters with default values can be omitted.
+- The test cases of a procedure are named `<procedure>[1]`, `<procedure>[2]`, ... in the order of the annotations. Running the procedure by path, for example `ut.run('test_discount.discount')`, runs all of its test cases.
+- `--%tags`, `--%throws`, `--%rollback`, `--%disabled` and `--%beforetest`/`--%aftertest` of the test procedure apply to every test case.
+
+The description of the `--%test` annotation can refer to the arguments of a test case:
+
+- `{1}`, `{2}`, ... is replaced with the first, second, ... argument, as written in the annotation
+- `{<parameter name>}` is replaced with an argument passed by name
+- without any placeholder, the arguments are appended to the description in brackets
+
+```sql linenums="1"
+create or replace package test_discount as
+  --%suite(Discount)
+
+  --%test(Discount for {1} EUR, VIP {2} is {3} percent)
+  --%testcase(2000, true,  10)
+  --%testcase(1000, true,  5)
+  --%testcase(100,  false, 1)
+  procedure discount(a_amount number, a_vip boolean, a_expected number);
+
+  --%test(Discount for regular customers)
+  --%testcase(a_amount => 750, a_expected => 5)
+  --%testcase(a_amount => null, a_expected => 0)
+  procedure regular_customer(a_amount number, a_vip boolean := false, a_expected number);
+end;
+/
+create or replace package body test_discount as
+  function discount_pct(a_amount number, a_vip boolean) return number is
+  begin
+    return case when a_vip and a_amount > 1000 then 10 when a_amount between 500 and 1000 then 5 else 0 end;
+  end;
+
+  procedure discount(a_amount number, a_vip boolean, a_expected number) is
+  begin
+    ut.expect(discount_pct(a_amount, a_vip)).to_equal(a_expected);
+  end;
+
+  procedure regular_customer(a_amount number, a_vip boolean := false, a_expected number) is
+  begin
+    ut.expect(discount_pct(a_amount, a_vip)).to_equal(a_expected);
+  end;
+end;
+/
+```
+```sql linenums="1"
+exec ut.run('test_discount');
+```
+```
+Discount
+  Discount for 2000 EUR, VIP true is 10 percent [.01 sec]
+  Discount for 1000 EUR, VIP true is 5 percent [.004 sec]
+  Discount for 100 EUR, VIP false is 1 percent [.012 sec] (FAILED - 1)
+  Discount for regular customers (a_amount => 750, a_expected => 5) [.004 sec]
+  Discount for regular customers (a_amount => null, a_expected => 0) [.003 sec]
+ 
+Failures:
+ 
+  1) discount[3]
+      Actual: 0 (number) was expected to equal: 1 (number)
+      at "TESTS_OWNER.TEST_DISCOUNT.DISCOUNT", line 9 ut.expect(discount_pct(a_amount, a_vip)).to_equal(a_expected);
+       
+Finished in .039832 seconds
+5 tests, 1 failed, 0 errored, 0 disabled, 0 warning(s)
+```
+
+The whole annotation must fit in one line and end with the closing bracket; a comment after the annotation is not allowed.
+Using `--%testcase` on a procedure without `--%test` gives a warning and the annotation is ignored.
 
 ### Disabled
 Marks annotated suite package or test procedure as disabled.
@@ -1079,6 +1155,51 @@ Finished in .015185 seconds
 2 tests, 0 failed, 0 errored, 0 disabled, 0 warning(s)
 ```
 
+
+
+#### Procedures with arguments
+
+The procedures listed in `--%beforetest`, `--%aftertest`, and in package level `--%beforeall`, `--%afterall`, `--%beforeeach` and `--%aftereach` annotations can be called with arguments.
+The arguments are PL/SQL expressions, passed by position or by name, written in brackets after the procedure name.
+Commas inside brackets and string literals don't separate procedures.
+
+```sql linenums="1"
+create or replace package test_package as
+  --%suite(Tests for a package)
+
+  --%test(Description of tested behavior)
+  --%beforetest(setup_customer('VIP, gold', 2000), setup_customer(a_kind => 'regular', a_limit => 100))
+  procedure some_test;
+
+  procedure setup_customer(a_kind varchar2, a_limit number);
+end;
+/
+create or replace package body test_package as
+  procedure setup_customer(a_kind varchar2, a_limit number) is
+  begin
+    dbms_output.put_line('---SETUP_CUSTOMER(' || a_kind || ', ' || a_limit || ') invoked ---');
+  end;
+
+  procedure some_test is
+  begin
+    dbms_output.put_line('---SOME_TEST invoked ---');
+  end;
+end;
+/
+```
+```sql linenums="1"
+exec ut.run('test_package');
+```
+```
+Tests for a package
+  Description of tested behavior [.013 sec]
+  ---SETUP_CUSTOMER(VIP, gold, 2000) invoked ---
+  ---SETUP_CUSTOMER(regular, 100) invoked ---
+  ---SOME_TEST invoked ---
+ 
+Finished in .015405 seconds
+1 tests, 0 failed, 0 errored, 0 disabled, 0 warning(s)
+```
 
 ### Aftertest
 
@@ -2149,7 +2270,7 @@ Following attributes are populated:
  | CONTEXT_PATH            | suite context | the suitepath for the currently executed test suite context                                                                                         |  
  | CONTEXT_START_TIME      | suite context | the execution start timestamp for the currently executed test suite context                                                                         |  
 | TEST_DESCRIPTION        | test*         | the description of test for which the current executable is being invoked                                                                           |
-| TEST_NAME               | test*         | the name of test for which the current executable is being invoked                                                                                  |
+| TEST_NAME               | test*         | the name of test for which the current executable is being invoked; for a test case it ends with the case number, e.g. `owner.package.test[2]`        |
 | TEST_START_TIME         | test*         | the execution start timestamp of test that is currently being executed (the time when first `beforeeach`/`beforetest` was called for that test)     |
 
 !!! note "Scopes"

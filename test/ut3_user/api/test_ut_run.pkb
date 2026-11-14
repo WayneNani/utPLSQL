@@ -1766,5 +1766,116 @@ procedure tag_exclude_run_fun_pth_lst_lg is
     -- ut.expect(l_client_info).to_equal(gc_client_info);
   end;
 
+  procedure create_suite_with_test_cases is
+    pragma autonomous_transaction;
+  begin
+    execute immediate q'~create or replace package test_cases_in_ut3_user is
+      --%suite(Test cases)
+      --%beforeall(start_log('all'))
+
+      g_log varchar2(4000);
+
+      procedure start_log(a_text varchar2);
+      procedure log_call(a_text varchar2, a_number number);
+
+      --%test(Half of {1} is {2})
+      --%testcase(2000, 1000)
+      --%testcase(a_amount => 10, a_half => 5)
+      --%testcase(1, 1)
+      procedure half(a_amount number, a_half number);
+
+      --%test(Calls before and after test procedures with arguments)
+      --%beforetest(log_call('a, b', 1), log_call(a_text => q'{x)}', a_number => 2))
+      --%aftertest(log_call('after', 3))
+      procedure before_after_args;
+    end;~';
+    execute immediate q'~create or replace package body test_cases_in_ut3_user is
+      procedure start_log(a_text varchar2) is
+      begin
+        g_log := '[' || a_text || ']';
+      end;
+      procedure log_call(a_text varchar2, a_number number) is
+      begin
+        g_log := g_log || '[' || a_text || ':' || a_number || ']';
+      end;
+      procedure half(a_amount number, a_half number) is
+      begin
+        ut3_develop.ut.expect(a_amount / 2).to_equal(a_half);
+      end;
+      procedure before_after_args is
+      begin
+        ut3_develop.ut.expect(g_log).to_equal('[all][a, b:1][x):2]');
+      end;
+    end;~';
+  end;
+
+  procedure drop_suite_with_test_cases is
+    pragma autonomous_transaction;
+  begin
+    execute immediate 'drop package test_cases_in_ut3_user';
+  end;
+
+  procedure run_test_cases is
+    l_results ut3_develop.ut_varchar2_list;
+    l_actual  clob;
+  begin
+    --Act
+    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user'));
+    l_actual := ut3_tester_helper.main_helper.table_to_clob(l_results);
+    --Assert
+    ut.expect(l_actual).to_be_like(
+      '%Half of 2000 is 1000 [%' ||
+      '%Half of 10 is 5 [%' ||
+      '%Half of 1 is 1 [% (FAILED - 1)%' ||
+      '%4 tests, 1 failed, 0 errored%'
+    );
+  end;
+
+  procedure run_test_cases_by_path is
+    l_results ut3_develop.ut_varchar2_list;
+    l_actual  clob;
+  begin
+    --Act
+    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.half'));
+    l_actual := ut3_tester_helper.main_helper.table_to_clob(l_results);
+    --Assert
+    ut.expect(l_actual).to_be_like('%3 tests, 1 failed, 0 errored%');
+  end;
+
+  procedure run_before_after_with_args is
+    l_results ut3_develop.ut_varchar2_list;
+    l_actual  clob;
+  begin
+    --Act
+    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.before_after_args'));
+    l_actual := ut3_tester_helper.main_helper.table_to_clob(l_results);
+    --Assert
+    ut.expect(l_actual).to_be_like('%1 tests, 0 failed, 0 errored%');
+  end;
+
+  procedure report_test_case_names is
+    l_results ut3_develop.ut_varchar2_list;
+  begin
+    --Act
+    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.half'));
+    --Assert
+    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like('%Failures:%1) half[3]%');
+
+    select * bulk collect into l_results
+      from table(ut3_develop.ut.run('test_cases_in_ut3_user.half', ut3_develop.ut_junit_reporter()));
+    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
+      '%<testcase classname="test_cases_in_ut3_user"%name="Half of 2000 is 1000"%' ||
+      '%<testcase classname="test_cases_in_ut3_user"%name="Half of 1 is 1"%'
+    );
+
+    select * bulk collect into l_results
+      from table(ut3_develop.ut.run('test_cases_in_ut3_user.half', ut3_develop.ut_teamcity_reporter()));
+    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
+      '%testStarted%name=''ut3_user.test_cases_in_ut3_user.half|[1|]''%' ||
+      '%testStarted%name=''ut3_user.test_cases_in_ut3_user.half|[2|]''%' ||
+      '%testStarted%name=''ut3_user.test_cases_in_ut3_user.half|[3|]''%'
+    );
+  end;
+
 end;
 /

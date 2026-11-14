@@ -30,6 +30,10 @@ create or replace noneditionable type ut_executable under ut_event_item(
   * Used for ordering of executables, as Oracle doesn not guarantee ordering of items in a nested table.
   */
   seq_no                integer,
+  /**
+  * PL/SQL argument list passed to the procedure, without the enclosing parentheses, e.g. 'VIP', 2000
+  */
+  call_arguments        varchar2(4000 char),
 	constructor function ut_executable( self in out nocopy ut_executable, a_owner varchar2, a_package varchar2, a_procedure_name varchar2, a_executable_type varchar2) return self as result,
   member function form_name(a_skip_current_user_schema boolean := false) return varchar2,
   member procedure do_execute(

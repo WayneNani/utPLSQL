@@ -348,6 +348,28 @@ create or replace package test_ut_run is
 
   --%endcontext
   
+  --%context(test cases and procedure arguments)
+
+    --%beforeall(create_suite_with_test_cases)
+    --%afterall(drop_suite_with_test_cases)
+
+    --%test(Runs each --%testcase as a separate test)
+    procedure run_test_cases;
+
+    --%test(Runs all test cases of a test procedure given by path)
+    procedure run_test_cases_by_path;
+
+    --%test(Calls before and after procedures with arguments)
+    procedure run_before_after_with_args;
+
+    --%test(Reports each test case under its own name)
+    procedure report_test_case_names;
+
+  --%endcontext
+
+  procedure create_suite_with_test_cases;
+  procedure drop_suite_with_test_cases;
+
 end;
 /
 
