@@ -1847,7 +1847,15 @@ procedure tag_exclude_run_fun_pth_lst_lg is
 
       --%test(Value of a type that can't be passed)
       --%testcasesource(select xmltype('<a/>') a_xml from dual)
-      procedure xml_value(a_xml xmltype);~' || l_boolean_spec || q'~
+      procedure xml_value(a_xml xmltype);
+
+      --%test(Argument that doesn't fit the parameter)
+      --%testcase(1)
+      procedure wrong_argument_type(a_pair test_case_pair);
+
+      --%test(Column that doesn't fit the parameter)
+      --%testcasesource(select 1 a_pair from dual)
+      procedure wrong_column_type(a_pair test_case_pair);~' || l_boolean_spec || q'~
     end;~';
     execute immediate q'~create or replace package body test_cases_in_ut3_user is
       procedure start_log(a_text varchar2) is
@@ -1923,6 +1931,14 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       procedure xml_value(a_xml xmltype) is
       begin
         null;
+      end;
+      procedure wrong_argument_type(a_pair test_case_pair) is
+      begin
+        null;
+      end;
+      procedure wrong_column_type(a_pair test_case_pair) is
+      begin
+        null;
       end;~' || l_boolean_body || q'~
     end;~';
   end;
@@ -1952,7 +1968,7 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       '%Half of 4 from table is 2 [%' ||
       '%Half of 10 from table is 5 [%' ||
       '%Half of a pair (<%TEST_CASE_PAIR>) [%' ||
-      '% tests, 2 failed, 2 errored, 1 disabled%'
+      '% tests, 2 failed, 4 errored, 1 disabled%'
     );
   end;
 
@@ -2071,6 +2087,20 @@ procedure tag_exclude_run_fun_pth_lst_lg is
     ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
       '%The --%testcasesource query failed.%ORA-20220: Column A_XML of the --%testcasesource query has a data type ' ||
       'that can''t be passed to the test: XMLTYPE%1 tests, 0 failed, 1 errored%'
+    );
+  end;
+
+  procedure run_test_case_wrong_type is
+    l_results ut3_develop.ut_varchar2_list;
+  begin
+    --Act
+    select * bulk collect into l_results
+      from table(ut3_develop.ut.run(ut3_develop.ut_varchar2_list(
+        'test_cases_in_ut3_user.wrong_argument_type', 'test_cases_in_ut3_user.wrong_column_type'
+      )));
+    --Assert
+    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
+      '%PLS-00306%PLS-00306%2 tests, 0 failed, 2 errored%'
     );
   end;
 

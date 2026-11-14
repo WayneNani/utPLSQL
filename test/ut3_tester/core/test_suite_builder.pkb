@@ -2138,6 +2138,7 @@ create or replace package body test_suite_builder is
       procedure checked(a_amount number, a_half number);
       procedure ovl(a number);
       procedure ovl(a varchar2, b number);
+      procedure ovl;
     end;]';
   end;
 
@@ -2190,12 +2191,15 @@ create or replace package body test_suite_builder is
         ut3_develop.ut_annotation(14, 'test','Overloaded', 'ovl'),
         ut3_develop.ut_annotation(15, 'testcase', '5', 'ovl'),
         ut3_develop.ut_annotation(16, 'testcase', q'['x', 1]', 'ovl'),
-        ut3_develop.ut_annotation(17, 'testcase', '1, 2, 3', 'ovl')
+        ut3_develop.ut_annotation(17, 'testcase', '1, 2, 3', 'ovl'),
+        ut3_develop.ut_annotation(18, 'testcase', null, 'ovl')
     );
     --Act
     l_actual := invoke_builder_for_annotations(l_annotations, 'TEST_CASE_ARGS');
     --Assert
-    ut.expect(l_actual).to_be_like('%<PATH>test_case_args.ovl[1]</PATH>%<PATH>test_case_args.ovl[2]</PATH>%');
+    ut.expect(l_actual).to_be_like(
+        '%<PATH>test_case_args.ovl[1]</PATH>%<PATH>test_case_args.ovl[2]</PATH>%<PATH>test_case_args.ovl[4]</PATH>%'
+    );
     ut.expect(l_actual).to_be_like(
         '%<WARNINGS>%has invalid arguments: 3 argument(s) given, but the procedure has 1 parameter(s). Annotation ignored.%</WARNINGS>%'
     );

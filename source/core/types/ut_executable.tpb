@@ -58,6 +58,7 @@ create or replace noneditionable type body ut_executable is
     l_statement                   varchar2(32767);
     l_call                        varchar2(32767);
     l_values                      ut_anydata_list;
+    l_parse_error                 varchar2(32767);
     l_status                      number;
     l_cursor_number               number;
     l_completed_without_errors    boolean := true;
@@ -118,7 +119,7 @@ create or replace noneditionable type body ut_executable is
 
       if not ut_metadata.package_valid(self.owner_name, self.object_name) then
         self.error_stack := l_message_part || 'package '||upper(self.owner_name||'.'||self.object_name)||' does not exist or is invalid.';
-      elsif not ut_metadata.procedure_exists(self.owner_name, self.object_name, self.procedure_name) then
+      elsif not ut_metadata.procedure_exists(upper(self.owner_name), upper(self.object_name), upper(self.procedure_name)) then
         self.error_stack := l_message_part || 'procedure '||upper(self.owner_name || '.' || self.object_name || '.' ||self.procedure_name)||' does not exist.';
       else
         l_result := false;
@@ -153,7 +154,8 @@ create or replace noneditionable type body ut_executable is
     if l_completed_without_errors then
       l_call := self.form_name( a_skip_current_user_schema => true ) || case when self.call_arguments is not null then '(' || self.call_arguments || ')' end || ';';
       if self.call_source is not null then
-        l_values := ut_test_case_values.get_values(a_item.path);
+        -- without its values (e.g. package state was reset) the test case errors when it reads them, instead of breaking the run
+        l_values := coalesce(ut_test_case_values.get_values(a_item.path), ut_anydata_list());
         l_call := get_test_case_call(l_values, l_call);
       end if;
       l_statement :=
@@ -211,10 +213,13 @@ create or replace noneditionable type body ut_executable is
         dbms_sql.close_cursor(l_cursor_number);
       exception 
         when ut_utils.ex_invalid_package then
+          l_parse_error := dbms_utility.format_error_stack;
           l_failed_with_invalid_pck := is_invalid();
           dbms_sql.close_cursor(l_cursor_number);
-          if not l_failed_with_invalid_pck then 
-            raise;
+          if not l_failed_with_invalid_pck then
+            -- the call itself doesn't compile, e.g. arguments that don't fit the parameters;
+            -- that is an error of this executable, not of the whole run
+            self.error_stack := l_parse_error;
           end if;
         when others then
          dbms_sql.close_cursor(l_cursor_number);

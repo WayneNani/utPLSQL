@@ -385,7 +385,7 @@ create or replace noneditionable package body ut_suite_builder is
   ) return varchar2 is
     l_procedure_name t_object_name := upper(a_procedure_name);
     l_arguments      ut_varchar2_list := ut_utils.split_top_level(a_arguments);
-    l_overload       varchar2(40);
+    l_overload       varchar2(40 char);
     l_names          ut_varchar2_list := ut_varchar2_list();
     l_defaulted      ut_varchar2_list := ut_varchar2_list();
     l_error          varchar2(4000 char);
@@ -440,19 +440,19 @@ create or replace noneditionable package body ut_suite_builder is
             l_defaulted := ut_varchar2_list();
           end if;
           l_overload := a_annotations.parameters(i).overload;
-          l_names.extend;
-          l_names(l_names.last) := a_annotations.parameters(i).parameter_name;
-          l_defaulted.extend;
-          l_defaulted(l_defaulted.last) := a_annotations.parameters(i).defaulted;
+          -- an overload without parameters has one entry without parameter name
+          if a_annotations.parameters(i).parameter_name is not null then
+            l_names.extend;
+            l_names(l_names.last) := a_annotations.parameters(i).parameter_name;
+            l_defaulted.extend;
+            l_defaulted(l_defaulted.last) := a_annotations.parameters(i).defaulted;
+          end if;
         end if;
       end loop;
     end if;
     if l_overload is not null then
       l_error := get_overload_error();
       return case when l_error is not null then coalesce(l_first_error, l_error) end;
-    elsif ut_metadata.procedure_exists(upper(a_annotations.owner), upper(a_annotations.name), l_procedure_name) then
-      -- a procedure without parameters has no entries in the list of parameters
-      return get_overload_error();
     end if;
     return null;
   end;

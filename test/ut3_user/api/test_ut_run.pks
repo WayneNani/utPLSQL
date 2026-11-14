@@ -396,6 +396,9 @@ create or replace package test_ut_run is
     --%test(Reports the test as errored when a column of the --%testcasesource query has an unsupported type)
     procedure run_test_case_source_bad_type;
 
+    --%test(Reports a test case as errored when its arguments don't fit the parameters, and continues the run)
+    procedure run_test_case_wrong_type;
+
     $if dbms_db_version.version >= 23 $then
     --%test(Passes BOOLEAN values from the --%testcasesource query)
     procedure run_test_case_source_boolean;

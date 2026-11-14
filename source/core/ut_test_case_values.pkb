@@ -16,7 +16,7 @@ create or replace noneditionable package body ut_test_case_values as
   limitations under the License.
   */
 
-  type tt_values is table of ut_anydata_list index by varchar2(4000);
+  type tt_values is table of ut_anydata_list index by varchar2(4000 char);
   g_values tt_values;
 
   procedure set_values(a_test_path varchar2, a_values ut_anydata_list) is

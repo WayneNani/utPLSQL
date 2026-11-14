@@ -183,14 +183,19 @@ create or replace noneditionable type body ut_test as
   member function get_source_test_cases(self in ut_test) return ut_suite_items is
     type tt_value_rows is table of ut_anydata_list;
     type tt_display_rows is table of ut_varchar2_list;
+    type tt_flags is table of boolean index by pls_integer;
     l_parameters   ut_metadata.tt_parameters :=
-      ut_metadata.get_package_parameters(upper(self.item.owner_name), upper(self.item.object_name));
+      ut_metadata.get_package_parameters(
+        upper(self.item.owner_name), upper(self.item.object_name), upper(self.item.procedure_name)
+      );
     l_result       ut_suite_items := ut_suite_items();
     l_cursor       integer;
     l_columns      dbms_sql.desc_tab3;
     l_count        integer;
     l_named        boolean := false;
+    l_is_parameter tt_flags;
     l_arguments    varchar2(4000 char);
+    l_argument     varchar2(4000 char);
     l_values_list  varchar2(32767);
     l_display_list varchar2(32767);
     l_value_rows   tt_value_rows;
@@ -310,17 +315,25 @@ create or replace noneditionable type body ut_test as
     end;
 
     for i in 1 .. l_count loop
-      if l_columns(i).col_type not in (1, 2, 12, 23, 96, 100, 101, 109, 112, 113, 180, 181, 182, 183, 231, 252)
+      if argument_expression(l_columns(i), i) is null
         or l_columns(i).col_type = 109 and l_columns(i).col_schema_name = 'SYS' then
         raise_unsupported(l_columns(i));
       end if;
-      l_named := l_named or is_parameter(l_columns(i).col_name);
+      l_is_parameter(i) := is_parameter(l_columns(i).col_name);
+      l_named := l_named or l_is_parameter(i);
     end loop;
     -- columns named like parameters are passed by name; when none is, all columns are passed by position
     for i in 1 .. l_count loop
-      if not l_named or is_parameter(l_columns(i).col_name) then
-        l_arguments := l_arguments || case when l_arguments is not null then ', ' end
+      if not l_named or l_is_parameter(i) then
+        l_argument := case when l_arguments is not null then ', ' end
           || case when l_named then '"' || l_columns(i).col_name || '" => ' end || argument_expression(l_columns(i), i);
+        if nvl(lengthc(l_arguments), 0) + lengthc(l_argument) > ut_utils.gc_max_storage_varchar2_len then
+          raise_application_error(
+            ut_utils.gc_invalid_test_case_source,
+            'The --%testcasesource query passes too many columns to the test procedure.'
+          );
+        end if;
+        l_arguments := l_arguments || l_argument;
       end if;
       l_values_list := l_values_list || case when i > 1 then ', ' end || value_expression(l_columns(i));
       l_display_list := l_display_list || case when i > 1 then ', ' end || display_expression(l_columns(i));
@@ -345,7 +358,7 @@ create or replace noneditionable type body ut_test as
       l_test.path := self.path || '[' || l_row_no || ']';
       l_test.description := ut_utils.get_test_case_description(
         self.description, l_names, l_display_rows(l_row_no),
-        ut_utils.table_to_clob(l_display_rows(l_row_no), ', ')
+        dbms_lob.substr(ut_utils.table_to_clob(l_display_rows(l_row_no), ', '), ut_utils.gc_max_storage_varchar2_len)
       );
       ut_test_case_values.set_values(l_test.path, l_value_rows(l_row_no));
       l_test.item.call_source_row := l_row_no;

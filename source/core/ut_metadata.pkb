@@ -69,15 +69,24 @@ create or replace noneditionable package body ut_metadata as
       return false;
   end;
 
-  function get_package_parameters(a_owner_name varchar2, a_package_name varchar2) return tt_parameters is
-    l_result    tt_parameters;
-    l_view_name varchar2(200) := get_dba_view('dba_arguments');
+  function get_package_parameters(
+    a_owner_name varchar2, a_package_name varchar2, a_procedure_name varchar2 := null
+  ) return tt_parameters is
+    l_result     tt_parameters;
+    l_procedures varchar2(200 char) := get_dba_view('dba_procedures');
+    l_arguments  varchar2(200 char) := get_dba_view('dba_arguments');
   begin
+    -- the outer join keeps procedures without parameters, which have no entries in dba_arguments
     execute immediate
-      'select /*+ no_parallel */ object_name, nvl(overload, ''0''), argument_name, defaulted from ' || l_view_name ||
-      ' where owner = :a_owner_name and package_name = :a_package_name and data_level = 0 and argument_name is not null' ||
-      ' order by object_name, overload, position'
-      bulk collect into l_result using a_owner_name, a_package_name;
+      'select /*+ no_parallel */ p.procedure_name, nvl(p.overload, ''0''), a.argument_name, a.defaulted' ||
+      '  from ' || l_procedures || ' p' ||
+      '  left join ' || l_arguments || ' a' ||
+      '    on a.owner = p.owner and a.package_name = p.object_name and a.object_name = p.procedure_name' ||
+      '   and nvl(a.overload, ''0'') = nvl(p.overload, ''0'') and a.data_level = 0 and a.argument_name is not null' ||
+      ' where p.owner = :a_owner_name and p.object_name = :a_package_name and p.procedure_name is not null' ||
+      '   and (:a_procedure_name is null or p.procedure_name = :a_procedure_name)' ||
+      ' order by p.procedure_name, p.overload, a.position'
+      bulk collect into l_result using a_owner_name, a_package_name, a_procedure_name, a_procedure_name;
     return l_result;
   end;
 

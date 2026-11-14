@@ -215,7 +215,7 @@ create or replace package test_suite_builder is
       --%test(Gives a warning for each test case with invalid arguments and skips it)
       procedure testcase_invalid_arguments;
 
-      --%test(Accepts arguments that fit one of the overloads)
+      --%test(Accepts arguments that fit one of the overloads, including an overload without parameters)
       procedure testcase_overloads;
 
   --%endcontext

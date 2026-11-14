@@ -72,7 +72,16 @@ create or replace noneditionable type body ut_suite  as
               self.put_warning('The --%testcasesource query returned no rows.', l_test.name, l_test.line_no);
             end if;
             for j in 1 .. l_cases.count loop
-              l_cases(j).do_execute();
+              begin
+                l_cases(j).do_execute();
+              exception
+                when others then
+                  -- don't keep the values of the test cases that won't run
+                  for k in j .. l_cases.count loop
+                    ut_test_case_values.remove_values(l_cases(k).path);
+                  end loop;
+                  raise;
+              end;
               ut_test_case_values.remove_values(l_cases(j).path);
               add_item(l_cases(j));
             end loop;

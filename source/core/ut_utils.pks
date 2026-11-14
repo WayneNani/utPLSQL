@@ -130,7 +130,7 @@ create or replace noneditionable package ut_utils authid definer is
   gc_invalid_test_case_source constant pls_integer := -20220;
 
   -- an argument passed by name: group 1 is the parameter name
-  gc_named_argument_pattern constant varchar2(50) := '^([[:alpha:]][[:alnum:]_$#]*)\s*=>\s*';
+  gc_named_argument_pattern constant varchar2(50 char) := '^([[:alpha:]][[:alnum:]_$#]*)\s*=>\s*';
   
   gc_max_storage_varchar2_len constant integer := 4000;
   gc_max_output_string_length constant integer := 4000;
