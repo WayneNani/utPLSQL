@@ -2085,5 +2085,145 @@ create or replace package body test_suite_builder is
     ut.expect(l_actual).not_to_be_like('%<UT_SUITE_ITEM>%');
   end;
 
+  procedure testcasesource_stores_query is
+    l_actual      clob;
+    l_annotations ut3_develop.ut_annotations;
+  begin
+    --Arrange
+    l_annotations := ut3_develop.ut_annotations(
+        ut3_develop.ut_annotation(1, 'suite','Cool', null),
+        ut3_develop.ut_annotation(14, 'test','A test', 'some_test'),
+        ut3_develop.ut_annotation(15, 'testcasesource', 'select 1 a_value from dual', 'some_test')
+    );
+    --Act
+    l_actual := invoke_builder_for_annotations(l_annotations, 'SOME_PACKAGE');
+    --Assert
+    ut.expect(l_actual).to_be_like(
+        '%<UT_SUITE_ITEM>%<NAME>some_test</NAME>%<PATH>some_package.some_test</PATH>' ||
+        '%<CALL_SOURCE>select 1 a_value from dual</CALL_SOURCE>%</UT_SUITE_ITEM>%'
+    );
+  end;
+
+  procedure testcasesource_invalid_use is
+    l_actual      clob;
+    l_annotations ut3_develop.ut_annotations;
+  begin
+    --Arrange
+    l_annotations := ut3_develop.ut_annotations(
+        ut3_develop.ut_annotation(1, 'suite','Cool', null),
+        ut3_develop.ut_annotation(14, 'test','Both', 'both_test'),
+        ut3_develop.ut_annotation(15, 'testcase', '1', 'both_test'),
+        ut3_develop.ut_annotation(16, 'testcasesource', 'select 1 from dual', 'both_test'),
+        ut3_develop.ut_annotation(20, 'test','No query', 'no_query_test'),
+        ut3_develop.ut_annotation(21, 'testcasesource', null, 'no_query_test'),
+        ut3_develop.ut_annotation(25, 'testcasesource', 'select 1 from dual', 'not_a_test')
+    );
+    --Act
+    l_actual := invoke_builder_for_annotations(l_annotations, 'SOME_PACKAGE');
+    --Assert
+    ut.expect(l_actual).to_be_like(
+        '%<WARNINGS>' ||
+        '%Annotation &quot;--%testcasesource&quot; cannot be used together with &quot;--%testcase&quot;. Annotation ignored.' ||
+        '%Annotation &quot;--%testcasesource&quot; requires a query. Annotation ignored.' ||
+        '%Annotation &quot;--%testcasesource&quot; can only be used with &quot;--%test&quot;. Annotation ignored.' ||
+        '%</WARNINGS>%'
+    );
+    ut.expect(l_actual).not_to_be_like('%<CALL_SOURCE>select%');
+  end;
+
+  procedure create_test_case_args_package is
+    pragma autonomous_transaction;
+  begin
+    execute immediate q'[create or replace package test_case_args is
+      procedure checked(a_amount number, a_half number);
+      procedure ovl(a number);
+      procedure ovl(a varchar2, b number);
+      procedure needs_args(a_amount number);
+      procedure optional_args(a_amount number := 1);
+    end;]';
+  end;
+
+  procedure drop_test_case_args_package is
+    pragma autonomous_transaction;
+  begin
+    execute immediate 'drop package test_case_args';
+  end;
+
+  procedure testcase_invalid_arguments is
+    l_actual      clob;
+    l_annotations ut3_develop.ut_annotations;
+  begin
+    --Arrange
+    l_annotations := ut3_develop.ut_annotations(
+        ut3_develop.ut_annotation(1, 'suite','Cool', null),
+        ut3_develop.ut_annotation(14, 'test','Checked', 'checked'),
+        ut3_develop.ut_annotation(15, 'testcase', '1, 2, 3', 'checked'),
+        ut3_develop.ut_annotation(16, 'testcase', 'a_x => 1', 'checked'),
+        ut3_develop.ut_annotation(17, 'testcase', 'a_half => 1', 'checked'),
+        ut3_develop.ut_annotation(18, 'testcase', '1, a_amount => 2', 'checked'),
+        ut3_develop.ut_annotation(19, 'testcase', 'a_amount => 1, 2', 'checked'),
+        ut3_develop.ut_annotation(20, 'testcase', '1,,2', 'checked'),
+        ut3_develop.ut_annotation(21, 'testcase', 'a_half => 1000, a_amount => 2000', 'checked')
+    );
+    --Act
+    l_actual := invoke_builder_for_annotations(l_annotations, 'TEST_CASE_ARGS');
+    --Assert
+    ut.expect(l_actual).to_be_like(
+        '%<WARNINGS>' ||
+        '%has invalid arguments: 3 argument(s) given, but the procedure has 2 parameter(s). Annotation ignored.' ||
+        '%has invalid arguments: the procedure has no parameter A_X. Annotation ignored.' ||
+        '%has invalid arguments: no value for parameter(s) A_AMOUNT. Annotation ignored.' ||
+        '%has invalid arguments: parameter A_AMOUNT is given twice. Annotation ignored.' ||
+        '%has invalid arguments: argument 2 is passed by position after an argument passed by name. Annotation ignored.' ||
+        '%has invalid arguments: argument 2 is empty. Annotation ignored.' ||
+        '%</WARNINGS>%'
+    );
+    ut.expect(l_actual).to_be_like('%<PATH>test_case_args.checked[7]</PATH>%');
+    ut.expect(l_actual).not_to_be_like('%<PATH>test_case_args.checked[_]</PATH>%<PATH>test_case_args.checked[_]</PATH>%');
+  end;
+
+  procedure testcase_overloads is
+    l_actual      clob;
+    l_annotations ut3_develop.ut_annotations;
+  begin
+    --Arrange
+    l_annotations := ut3_develop.ut_annotations(
+        ut3_develop.ut_annotation(1, 'suite','Cool', null),
+        ut3_develop.ut_annotation(14, 'test','Overloaded', 'ovl'),
+        ut3_develop.ut_annotation(15, 'testcase', '5', 'ovl'),
+        ut3_develop.ut_annotation(16, 'testcase', q'['x', 1]', 'ovl'),
+        ut3_develop.ut_annotation(17, 'testcase', '1, 2, 3', 'ovl')
+    );
+    --Act
+    l_actual := invoke_builder_for_annotations(l_annotations, 'TEST_CASE_ARGS');
+    --Assert
+    ut.expect(l_actual).to_be_like('%<PATH>test_case_args.ovl[1]</PATH>%<PATH>test_case_args.ovl[2]</PATH>%');
+    ut.expect(l_actual).to_be_like(
+        '%<WARNINGS>%has invalid arguments: 3 argument(s) given, but the procedure has 1 parameter(s). Annotation ignored.%</WARNINGS>%'
+    );
+    ut.expect(l_actual).not_to_be_like('%<PATH>test_case_args.ovl[3]</PATH>%');
+  end;
+
+  procedure test_without_required_args is
+    l_actual      clob;
+    l_annotations ut3_develop.ut_annotations;
+  begin
+    --Arrange
+    l_annotations := ut3_develop.ut_annotations(
+        ut3_develop.ut_annotation(1, 'suite','Cool', null),
+        ut3_develop.ut_annotation(14, 'test','Needs arguments', 'needs_args'),
+        ut3_develop.ut_annotation(16, 'test','Optional arguments', 'optional_args')
+    );
+    --Act
+    l_actual := invoke_builder_for_annotations(l_annotations, 'TEST_CASE_ARGS');
+    --Assert
+    ut.expect(l_actual).to_be_like(
+        '%<WARNINGS>%Test procedure cannot be called without arguments: no value for parameter(s) A_AMOUNT. ' ||
+        'Use &quot;--%testcase&quot; to provide arguments.%NEEDS_ARGS%</WARNINGS>%'
+    );
+    ut.expect(l_actual).not_to_be_like('%cannot be called without arguments%cannot be called without arguments%');
+    ut.expect(l_actual).to_be_like('%<PATH>test_case_args.needs_args</PATH>%');
+  end;
+
 end test_suite_builder;
 /

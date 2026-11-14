@@ -33,7 +33,7 @@ create or replace noneditionable package body ut_suite_cache_macros as
                    )
              )
           or ( instr(p.suite_path, '*') = 0
-               and ( i.path = p.suite_path or substr(i.path, 1, length(p.suite_path) + 1) = p.suite_path || '.' )
+               and ( i.path = p.suite_path or substr(i.path, 1, length(p.suite_path) + 1) in (p.suite_path || '.', p.suite_path || '[') )
              )
           or ( instr(p.suite_path, '*') > 0
                and regexp_like(

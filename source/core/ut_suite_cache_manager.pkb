@@ -21,7 +21,7 @@ create or replace noneditionable package body ut_suite_cache_manager is
   */
 
   function get_schema_paths(a_paths in ut_varchar2_list) return ut_path_items is
-    c_package_path_regex constant varchar2(100) := '^([[:alnum:]$#_]+)(\.([[:alnum:]$#_\*]+))?(\.([[:alnum:]$#_\*]+))?$';
+    c_package_path_regex constant varchar2(100) := '^([[:alnum:]$#_]+)(\.([[:alnum:]$#_\*]+))?(\.([[:alnum:]$#_\*]+(\[[0-9]+\])?))?$';
     l_results            ut_path_items := ut_path_items();
     l_path_item          ut_path_item;
     i                    pls_integer;
