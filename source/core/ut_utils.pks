@@ -125,6 +125,12 @@ create or replace noneditionable package ut_utils authid definer is
   ex_invalid_tag_expression exception;
   gc_invalid_tag_expression constant pls_integer := -20219;
   pragma exception_init (ex_invalid_tag_expression, -20219);  
+
+  -- the row of a --%testcasesource test case is no longer returned by its query
+  gc_test_case_row_not_found constant pls_integer := -20220;
+
+  -- an argument passed by name: group 1 is the parameter name
+  gc_named_argument_pattern constant varchar2(50) := '^([[:alpha:]][[:alnum:]_$#]*)\s*=>\s*';
   
   gc_max_storage_varchar2_len constant integer := 4000;
   gc_max_output_string_length constant integer := 4000;
@@ -239,7 +245,7 @@ create or replace noneditionable package ut_utils authid definer is
    *
    * Splits a PL/SQL fragment, such as an argument list, at a single-character delimiter.
    * Delimiters inside parentheses, string literals ('it''s', q'[...]', n'...') and quoted identifiers ("a.b") are not split.
-   * Each element is trimmed. If null a_text passed, empty table is returned.
+   * Leading and trailing whitespace of each element is removed. If null a_text passed, empty table is returned.
    * An unterminated literal makes the rest of the text the last element.
    * Example:
    *   split_top_level( q'[f(1, 2), 'a,b', "x.y"]', ',' ) gives table ut_varchar2_list( 'f(1, 2)', q'['a,b']', '"x.y"' );
@@ -250,6 +256,21 @@ create or replace noneditionable package ut_utils authid definer is
    * @return table of varchar2 values
    */
   function split_top_level(a_text varchar2, a_delimiter varchar2 := ',') return ut_varchar2_list;
+
+  /**
+   *
+   * Builds the description of a test case of a --%testcase or --%testcasesource test.
+   * {1}, {2}, ... in the description are replaced with the values, {<name>} with the value of that name.
+   * Without placeholders, a_appendix is appended in brackets. A null description stays null.
+   *
+   * @param a_description the description of the test
+   * @param a_names       names of the values (parameter or column names), elements may be null
+   * @param a_values      the values, as shown in the description
+   * @param a_appendix    text appended when the description has no placeholders
+   */
+  function get_test_case_description(
+    a_description varchar2, a_names ut_varchar2_list, a_values ut_varchar2_list, a_appendix varchar2
+  ) return varchar2;
 
   /**
    *

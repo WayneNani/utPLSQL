@@ -419,7 +419,6 @@ When the suite is built, the arguments of each test case are checked against the
 the number of arguments, the parameter names, parameters without default value and positional arguments after named ones.
 A test case with invalid arguments gives a warning and is skipped; the numbers of the other test cases don't change.
 Types are not checked, as PL/SQL converts many types implicitly. A wrong type shows up as an error when the test case runs.
-A `--%test` procedure that has parameters without default value and no test cases gives a warning, as it can't be called.
 
 ### Testcasesource
 
@@ -429,13 +428,19 @@ It suits test data that is easier to keep in a table, including complex data suc
 - The query runs when the suite runs, after its `--%beforeall` procedures, so it sees the data they create. Each test case is rolled back as usual.
 - Columns named like a parameter of the test procedure are passed to that parameter. Other columns are not passed, but can be used in the description.
   If no column is named like a parameter, all columns are passed by position.
-- Each row becomes a separate test, named `<procedure>[1]`, `<procedure>[2]`, ... in the order the query returns the rows. Use `order by` to keep the order stable.
+- Each row becomes a separate test, named `<procedure>[1]`, `<procedure>[2]`, ... in the order the query returns the rows.
+- Each test case runs the query again and takes its row by number, so the query has to return the same rows in the same order every time:
+  use `order by` on a unique key, and don't change the source data in `--%beforeeach`, `--%beforetest` or earlier test cases.
+  If the row of a test case is gone when it runs, the test case errors with `ORA-20220`.
+  As the query runs once per test case and once more to find the rows, keep it cheap.
+- A disabled test doesn't run its query.
 - The description can refer to the values of a row with `{1}`, `{2}`, ... (column position) and `{<column name>}`.
   Values of object types and collections are shown as `<TYPE_NAME>`. Without any placeholder, the values are appended to the description in brackets.
 - If the query fails, the test is reported as errored with the error of the query. If it returns no rows, the suite gets a warning.
 - `--%testcasesource` can't be combined with `--%testcase` on the same procedure.
 - Running a single row by path, for example `ut.run('test_bulk_discount.bulk_discount[2]')`, is not supported, as the rows are only known when the suite runs.
 - The query runs with the privileges of the user running the tests. Qualify the tables with the owner if the tests run from another schema.
+- Reporters that list all tests before the run, such as `ut_realtime_reporter`, list the test once, as its rows are not known yet.
 
 ```sql linenums="1"
 create or replace type order_line force as object (sku varchar2(20), qty number, unit_price number);

@@ -126,12 +126,14 @@ create or replace noneditionable type body ut_executable is
           'declare' || chr(10) ||
           '      l_row_found boolean := false;' || chr(10) ||
           '    begin' || chr(10) ||
-          '      for r in (' || self.call_source || ') loop' || chr(10) ||
+          '      for r in (select * from (select ut_q.*, rownum ut_test_case_row from (' || self.call_source || ') ut_q)' ||
+          ' where ut_test_case_row = ' || self.call_source_row || ') loop' || chr(10) ||
           '        l_row_found := true;' || chr(10) ||
           '        ' || l_call || chr(10) ||
           '      end loop;' || chr(10) ||
           '      if not l_row_found then' || chr(10) ||
-          '        raise_application_error(-20000, ''The row of this test case is no longer returned by the --%testcasesource query.'');' || chr(10) ||
+          '        raise_application_error(' || ut_utils.gc_test_case_row_not_found ||
+          ', ''The --%testcasesource query no longer returns row ' || self.call_source_row || ' of this test case.'');' || chr(10) ||
           '      end if;' || chr(10) ||
           '    end;';
       end if;

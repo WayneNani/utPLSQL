@@ -1808,6 +1808,21 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       --%test(Source that fails)
       --%testcasesource(select a_value from table_that_does_not_exist)
       procedure broken_source(a_value number);
+
+      --%test(Disabled source)
+      --%disabled
+      --%testcasesource(select a_value from table_that_does_not_exist)
+      procedure disabled_source(a_value number);
+
+      --%test(Row that is deleted before the test case runs)
+      --%testcasesource(select a_amount, a_half from test_case_rows order by a_amount)
+      --%beforetest(delete_test_case_rows)
+      procedure vanishing_row(a_amount number, a_half number);
+      procedure delete_test_case_rows;
+
+      --%test
+      --%testcasesource(select 1 a_value from dual)
+      procedure no_description(a_value number);
     end;~';
     execute immediate q'~create or replace package body test_cases_in_ut3_user is
       procedure start_log(a_text varchar2) is
@@ -1848,6 +1863,22 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       begin
         null;
       end;
+      procedure disabled_source(a_value number) is
+      begin
+        null;
+      end;
+      procedure vanishing_row(a_amount number, a_half number) is
+      begin
+        null;
+      end;
+      procedure delete_test_case_rows is
+      begin
+        delete from test_case_rows;
+      end;
+      procedure no_description(a_value number) is
+      begin
+        null;
+      end;
     end;~';
   end;
 
@@ -1875,7 +1906,7 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       '%Half of 4 from table is 2 [%' ||
       '%Half of 10 from table is 5 [%' ||
       '%Half of a pair (<%TEST_CASE_PAIR>) [%' ||
-      '%9 tests, 2 failed, 1 errored%'
+      '%14 tests, 2 failed, 4 errored, 1 disabled%'
     );
   end;
 
@@ -1954,6 +1985,35 @@ procedure tag_exclude_run_fun_pth_lst_lg is
     ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
       '%The --%testcasesource query failed.%TABLE_THAT_DOES_NOT_EXIST%1 tests, 0 failed, 1 errored%'
     );
+  end;
+
+  procedure run_test_case_source_disabled is
+    l_results ut3_develop.ut_varchar2_list;
+  begin
+    --Act
+    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.disabled_source'));
+    --Assert
+    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like('%1 tests, 0 failed, 0 errored, 1 disabled%');
+  end;
+
+  procedure run_test_case_source_row_gone is
+    l_results ut3_develop.ut_varchar2_list;
+  begin
+    --Act
+    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.vanishing_row'));
+    --Assert
+    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
+      '%ORA-20220: The --%testcasesource query no longer returns row 1 of this test case.%3 tests, 0 failed, 3 errored%'
+    );
+  end;
+
+  procedure run_test_case_source_no_descr is
+    l_results ut3_develop.ut_varchar2_list;
+  begin
+    --Act
+    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.no_description'));
+    --Assert
+    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like('%no_description[1] [%1 tests, 0 failed, 0 errored%');
   end;
 
   procedure run_test_case_source_object is

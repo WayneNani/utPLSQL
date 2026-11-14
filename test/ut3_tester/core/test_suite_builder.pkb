@@ -2138,8 +2138,6 @@ create or replace package body test_suite_builder is
       procedure checked(a_amount number, a_half number);
       procedure ovl(a number);
       procedure ovl(a varchar2, b number);
-      procedure needs_args(a_amount number);
-      procedure optional_args(a_amount number := 1);
     end;]';
   end;
 
@@ -2202,27 +2200,6 @@ create or replace package body test_suite_builder is
         '%<WARNINGS>%has invalid arguments: 3 argument(s) given, but the procedure has 1 parameter(s). Annotation ignored.%</WARNINGS>%'
     );
     ut.expect(l_actual).not_to_be_like('%<PATH>test_case_args.ovl[3]</PATH>%');
-  end;
-
-  procedure test_without_required_args is
-    l_actual      clob;
-    l_annotations ut3_develop.ut_annotations;
-  begin
-    --Arrange
-    l_annotations := ut3_develop.ut_annotations(
-        ut3_develop.ut_annotation(1, 'suite','Cool', null),
-        ut3_develop.ut_annotation(14, 'test','Needs arguments', 'needs_args'),
-        ut3_develop.ut_annotation(16, 'test','Optional arguments', 'optional_args')
-    );
-    --Act
-    l_actual := invoke_builder_for_annotations(l_annotations, 'TEST_CASE_ARGS');
-    --Assert
-    ut.expect(l_actual).to_be_like(
-        '%<WARNINGS>%Test procedure cannot be called without arguments: no value for parameter(s) A_AMOUNT. ' ||
-        'Use &quot;--%testcase&quot; to provide arguments.%NEEDS_ARGS%</WARNINGS>%'
-    );
-    ut.expect(l_actual).not_to_be_like('%cannot be called without arguments%cannot be called without arguments%');
-    ut.expect(l_actual).to_be_like('%<PATH>test_case_args.needs_args</PATH>%');
   end;
 
 end test_suite_builder;

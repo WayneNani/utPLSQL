@@ -218,9 +218,6 @@ create or replace package test_suite_builder is
       --%test(Accepts arguments that fit one of the overloads)
       procedure testcase_overloads;
 
-      --%test(Gives a warning when a test procedure has parameters without default value and no test cases)
-      procedure test_without_required_args;
-
   --%endcontext
 
   procedure create_test_case_args_package;

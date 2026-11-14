@@ -384,6 +384,15 @@ create or replace package test_ut_run is
     --%test(Reports the test as errored when the --%testcasesource query fails)
     procedure run_test_case_source_failing;
 
+    --%test(Does not run the --%testcasesource query of a disabled test)
+    procedure run_test_case_source_disabled;
+
+    --%test(Reports a test case as errored when its row is gone when it runs)
+    procedure run_test_case_source_row_gone;
+
+    --%test(Names a test case of a test without description by its procedure)
+    procedure run_test_case_source_no_descr;
+
   --%endcontext
 
   procedure create_suite_with_test_cases;

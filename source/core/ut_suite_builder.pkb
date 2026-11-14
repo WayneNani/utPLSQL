@@ -268,7 +268,7 @@ create or replace noneditionable package body ut_suite_builder is
     l_procedures_list ut_varchar2_list;
     l_procedures_pos  binary_integer;
     l_components_list ut_varchar2_list;
-    l_call            varchar2(4000);
+    l_call            varchar2(4000 char);
     l_arguments_start binary_integer;
   begin
     l_annotation_pos := a_annotation_texts.first;
@@ -359,25 +359,17 @@ create or replace noneditionable package body ut_suite_builder is
   end;
 
   function get_test_case_description(a_description varchar2, a_arguments varchar2) return varchar2 is
-    c_named_argument constant varchar2(50) := '^([[:alpha:]][[:alnum:]_$#]*)\s*=>\s*';
-    l_arguments ut_varchar2_list;
-    l_name      varchar2(4000);
-    l_value     varchar2(4000);
-    l_result    varchar2(32767) := a_description;
+    l_arguments ut_varchar2_list := ut_utils.split_top_level(a_arguments);
+    l_names     ut_varchar2_list := ut_varchar2_list();
+    l_values    ut_varchar2_list := ut_varchar2_list();
   begin
-    if not regexp_like(a_description, '\{[[:alnum:]_$#]+\}') then
-      return a_description || case when a_arguments is not null then ' (' || a_arguments || ')' end;
-    end if;
-    l_arguments := ut_utils.split_top_level(a_arguments);
     for i in 1 .. l_arguments.count loop
-      l_name  := regexp_substr(l_arguments(i), c_named_argument, subexpression => 1);
-      l_value := regexp_replace(l_arguments(i), c_named_argument);
-      l_result := replace(l_result, '{' || i || '}', l_value);
-      if l_name is not null then
-        l_result := replace(replace(l_result, '{' || l_name || '}', l_value), '{' || lower(l_name) || '}', l_value);
-      end if;
+      l_names.extend;
+      l_names(i) := regexp_substr(l_arguments(i), ut_utils.gc_named_argument_pattern, subexpression => 1);
+      l_values.extend;
+      l_values(i) := regexp_replace(l_arguments(i), ut_utils.gc_named_argument_pattern);
     end loop;
-    return l_result;
+    return ut_utils.get_test_case_description(a_description, l_names, l_values, a_arguments);
   end;
 
   /*
@@ -389,26 +381,25 @@ create or replace noneditionable package body ut_suite_builder is
   function get_arguments_error(
     a_annotations      t_annotations_info,
     a_procedure_name   t_object_name,
-    a_arguments        varchar2,
-    a_check_existence  boolean := true
+    a_arguments        varchar2
   ) return varchar2 is
     l_procedure_name t_object_name := upper(a_procedure_name);
     l_arguments      ut_varchar2_list := ut_utils.split_top_level(a_arguments);
     l_overload       varchar2(40);
     l_names          ut_varchar2_list := ut_varchar2_list();
     l_defaulted      ut_varchar2_list := ut_varchar2_list();
-    l_error          varchar2(4000);
-    l_first_error    varchar2(4000);
+    l_error          varchar2(4000 char);
+    l_first_error    varchar2(4000 char);
 
     function get_overload_error return varchar2 is
       type tt_given is table of boolean index by t_object_name;
       l_given   tt_given;
       l_name    t_object_name;
       l_named   boolean := false;
-      l_missing varchar2(4000);
+      l_missing varchar2(4000 char);
     begin
       for i in 1 .. l_arguments.count loop
-        l_name := upper(regexp_substr(l_arguments(i), '^([[:alpha:]][[:alnum:]_$#]*)\s*=>', subexpression => 1));
+        l_name := upper(regexp_substr(l_arguments(i), ut_utils.gc_named_argument_pattern, subexpression => 1));
         if l_arguments(i) is null then
           return 'argument ' || i || ' is empty';
         elsif l_name is null then
@@ -459,7 +450,7 @@ create or replace noneditionable package body ut_suite_builder is
     if l_overload is not null then
       l_error := get_overload_error();
       return case when l_error is not null then coalesce(l_first_error, l_error) end;
-    elsif a_check_existence and ut_metadata.procedure_exists(upper(a_annotations.owner), upper(a_annotations.name), l_procedure_name) then
+    elsif ut_metadata.procedure_exists(upper(a_annotations.owner), upper(a_annotations.name), l_procedure_name) then
       -- a procedure without parameters has no entries in the list of parameters
       return get_overload_error();
     end if;
@@ -476,7 +467,7 @@ create or replace noneditionable package body ut_suite_builder is
     l_test     ut_test;
     l_position t_annotation_position := a_test_cases.first;
     l_case_no  binary_integer := 0;
-    l_error    varchar2(4000);
+    l_error    varchar2(4000 char);
   begin
     while l_position is not null loop
       -- cases are numbered by annotation, so that the number of a case does not change when another case is invalid
@@ -511,7 +502,6 @@ create or replace noneditionable package body ut_suite_builder is
     l_annotation_texts tt_annotation_texts;
     l_proc_annotations tt_annotations_by_name :=  a_annotations.by_proc(a_procedure_name);
     l_position         t_annotation_position;
-    l_error            varchar2(4000);
     c_test_case_annotations constant ut_varchar2_list := ut_varchar2_list(gc_testcase, gc_testcasesource);
   begin
 
@@ -608,15 +598,6 @@ create or replace noneditionable package body ut_suite_builder is
     if l_proc_annotations.exists(gc_testcase) then
       add_test_cases(a_suite, a_suite_items, l_test, a_annotations, l_proc_annotations(gc_testcase));
     else
-      if l_test.item.call_source is null then
-        l_error := get_arguments_error(a_annotations, a_procedure_name, null, a_check_existence => false);
-        if l_error is not null then
-          a_suite.put_warning(
-            'Test procedure cannot be called without arguments: ' || l_error || '. Use "--%testcase" to provide arguments.',
-            a_procedure_name, l_proc_annotations(gc_test).first
-          );
-        end if;
-      end if;
       a_suite_items.extend;
       a_suite_items( a_suite_items.last ) := l_test;
     end if;
@@ -1061,6 +1042,18 @@ create or replace noneditionable package body ut_suite_builder is
     return l_result;
   end;
 
+  function has_annotation(a_annotations t_annotations_info, a_annotation_name t_annotation_name) return boolean is
+    l_position t_annotation_position := a_annotations.by_line.first;
+  begin
+    while l_position is not null loop
+      if a_annotations.by_line(l_position).name = a_annotation_name then
+        return true;
+      end if;
+      l_position := a_annotations.by_line.next(l_position);
+    end loop;
+    return false;
+  end;
+
   procedure create_suite_item_list( a_annotated_object ut_annotated_object, a_suite_items out nocopy ut_suite_items ) is
     l_annotations      t_annotations_info;
     l_annotation_pos   t_annotation_position;
@@ -1073,7 +1066,9 @@ create or replace noneditionable package body ut_suite_builder is
       l_suite := ut_suite(l_annotations.owner, l_annotations.name, l_annotation_pos);
       l_suite.description := l_annotations.by_name( gc_suite)( l_annotation_pos);
       l_suite.parse_time  := l_annotations.parse_time;
-      l_annotations.parameters := ut_metadata.get_package_parameters(upper(l_annotations.owner), upper(l_annotations.name));
+      if has_annotation(l_annotations, gc_testcase) then
+        l_annotations.parameters := ut_metadata.get_package_parameters(upper(l_annotations.owner), upper(l_annotations.name));
+      end if;
       warning_on_unknown_annotations(l_suite, l_annotations.by_line);
 
       warning_on_duplicate_annot( l_suite, l_annotations.by_name, gc_suite );

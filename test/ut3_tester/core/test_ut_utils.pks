@@ -141,11 +141,27 @@ create or replace package test_ut_utils is
   --%test(Trims elements and keeps empty elements)
   procedure split_top_level_trims;
 
+  --%test(Removes tabs and line breaks around elements)
+  procedure split_top_level_whitespace;
+
   --%test(Returns empty collection for null text)
   procedure split_top_level_null;
 
   --%test(Returns the rest of the text as last element after an unterminated literal)
   procedure split_top_level_unterminated;
+
+  --%endcontext
+
+  --%context(get_test_case_description)
+
+  --%test(Appends the arguments when the description has no placeholders)
+  procedure test_case_descr_appends;
+
+  --%test(Replaces placeholders by position and by name)
+  procedure test_case_descr_placeholders;
+
+  --%test(Keeps a null description null)
+  procedure test_case_descr_null;
 
   --%endcontext
 

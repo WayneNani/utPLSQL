@@ -242,7 +242,7 @@ create or replace noneditionable package body ut_utils is
     procedure add_element(a_end binary_integer) is
     begin
       l_result.extend;
-      l_result(l_result.last) := trim(substr(a_text, l_start, a_end - l_start));
+      l_result(l_result.last) := regexp_replace(substr(a_text, l_start, a_end - l_start), '^[[:space:]]+|[[:space:]]+$');
     end;
   begin
     if a_text is null then
@@ -276,6 +276,24 @@ create or replace noneditionable package body ut_utils is
     end loop;
     add_element(l_length + 1);
     return l_result;
+  end;
+
+  function get_test_case_description(
+    a_description varchar2, a_names ut_varchar2_list, a_values ut_varchar2_list, a_appendix varchar2
+  ) return varchar2 is
+    l_result varchar2(32767) := a_description;
+  begin
+    if not regexp_like(a_description, '\{[[:alnum:]_$#]+\}') then
+      l_result := a_description || case when a_description is not null and a_appendix is not null then ' (' || a_appendix || ')' end;
+    else
+      for i in 1 .. a_values.count loop
+        l_result := replace(l_result, '{' || i || '}', a_values(i));
+        if a_names(i) is not null then
+          l_result := replace(replace(l_result, '{' || a_names(i) || '}', a_values(i)), '{' || lower(a_names(i)) || '}', a_values(i));
+        end if;
+      end loop;
+    end if;
+    return substrb(l_result, 1, gc_max_storage_varchar2_len);
   end;
 
   function string_table_to_table(a_list ut_varchar2_list, a_delimiter varchar2:= chr(10), a_skip_leading_delimiter varchar2 := 'N') return ut_varchar2_list is

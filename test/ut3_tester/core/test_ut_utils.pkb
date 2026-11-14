@@ -413,6 +413,39 @@ end;';
     expect_split(' a ,, b ', ',', ut3_develop.ut_varchar2_list('a', null, 'b'));
   end;
 
+  procedure split_top_level_whitespace is
+  begin
+    expect_split('a,' || chr(9) || 'b' || chr(10) || ', c', ',', ut3_develop.ut_varchar2_list('a', 'b', 'c'));
+  end;
+
+  procedure test_case_descr_appends is
+  begin
+    ut.expect(
+      ut3_develop.ut_utils.get_test_case_description(
+        'A test', ut3_develop.ut_varchar2_list(null, null), ut3_develop.ut_varchar2_list('1', '2'), '1, 2'
+      )
+    ).to_equal('A test (1, 2)');
+  end;
+
+  procedure test_case_descr_placeholders is
+  begin
+    ut.expect(
+      ut3_develop.ut_utils.get_test_case_description(
+        'Amount {1}, kind {a_kind}, unknown {3}',
+        ut3_develop.ut_varchar2_list(null, 'A_KIND'), ut3_develop.ut_varchar2_list('100', q'['VIP']'), null
+      )
+    ).to_equal(q'[Amount 100, kind 'VIP', unknown {3}]');
+  end;
+
+  procedure test_case_descr_null is
+  begin
+    ut.expect(
+      ut3_develop.ut_utils.get_test_case_description(
+        null, ut3_develop.ut_varchar2_list(null), ut3_develop.ut_varchar2_list('1'), '1'
+      )
+    ).to_be_null();
+  end;
+
   procedure split_top_level_null is
   begin
     ut.expect(anydata.convertcollection(ut3_develop.ut_utils.split_top_level(null))).to_be_empty;

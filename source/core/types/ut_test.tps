@@ -66,10 +66,7 @@ create or replace noneditionable type ut_test force under ut_suite_item (
   overriding member function get_error_stack_traces(self ut_test) return ut_varchar2_list,
   overriding member function get_serveroutputs return clob,
   member function get_failed_expectation_lines return ut_varchar2_rows,
-  /**
-  * True for a test with a --%testcasesource query that is not yet split into its test cases.
-  */
-  member function has_test_case_source(self in ut_test) return boolean,
+  overriding member function has_test_case_source(self in ut_test) return boolean,
   /**
   * Runs the --%testcasesource query and returns one test for each row.
   */
