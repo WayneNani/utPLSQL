@@ -126,7 +126,7 @@ create or replace noneditionable type body ut_executable is
       '  l_ignored_exception_detected integer := 0;' || chr(10) ||
       'begin' || chr(10) ||
       '  begin' || chr(10) ||
-      '    ' || self.form_name( a_skip_current_user_schema => true ) || ';' || chr(10) ||
+      '    ' || self.form_name( a_skip_current_user_schema => true ) || case when self.call_arguments is not null then '(' || self.call_arguments || ')' end || ';' || chr(10) ||
       '  exception' || chr(10) ||
               case when a_ignored_exception_names is not empty then
       '    when ' || ut_utils.table_to_clob( a_ignored_exception_names, ' or ' ) || ' then ' || chr(10) ||

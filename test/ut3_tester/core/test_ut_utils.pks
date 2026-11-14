@@ -124,6 +124,31 @@ create or replace package test_ut_utils is
 
   --%endcontext
 
+  --%context(split_top_level)
+
+  --%test(Splits only at delimiters outside of parentheses)
+  procedure split_top_level_parentheses;
+
+  --%test(Does not split inside string literals with doubled quotes)
+  procedure split_top_level_strings;
+
+  --%test(Does not split inside q-quoted and national string literals)
+  procedure split_top_level_q_strings;
+
+  --%test(Does not split inside quoted identifiers)
+  procedure split_top_level_quoted_ident;
+
+  --%test(Trims elements and keeps empty elements)
+  procedure split_top_level_trims;
+
+  --%test(Returns empty collection for null text)
+  procedure split_top_level_null;
+
+  --%test(Returns the rest of the text as last element after an unterminated literal)
+  procedure split_top_level_unterminated;
+
+  --%endcontext
+
   --%test(replace_multiline_comments - replaces multi-line comments with empty lines)
   procedure replace_multiline_comments;
 

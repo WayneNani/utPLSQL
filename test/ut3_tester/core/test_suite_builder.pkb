@@ -1968,5 +1968,122 @@ create or replace package body test_suite_builder is
       );
   end;
 
+  procedure standalone_bef_aft_arguments is
+    l_actual      clob;
+    l_annotations ut3_develop.ut_annotations;
+  begin
+    --Arrange
+    l_annotations := ut3_develop.ut_annotations(
+        ut3_develop.ut_annotation(1, 'suite','Cool', null),
+        ut3_develop.ut_annotation(2, 'beforeall', q'[prepare('all, data'), other_pkg.prepare(2)]', null),
+        ut3_develop.ut_annotation(3, 'beforeeach', 'prepare(3)', null),
+        ut3_develop.ut_annotation(14, 'test','A test', 'some_test')
+    );
+    --Act
+    l_actual := invoke_builder_for_annotations(l_annotations, 'SOME_PACKAGE');
+    --Assert
+    ut.expect(l_actual).to_be_like(
+        '%<BEFORE_EACH_LIST>' ||
+        '%<OBJECT_NAME>some_package</OBJECT_NAME><PROCEDURE_NAME>prepare</PROCEDURE_NAME>%<CALL_ARGUMENTS>3</CALL_ARGUMENTS>' ||
+        '%</BEFORE_EACH_LIST>' ||
+        '%<BEFORE_ALL_LIST>' ||
+        '%<OBJECT_NAME>some_package</OBJECT_NAME><PROCEDURE_NAME>prepare</PROCEDURE_NAME>%<CALL_ARGUMENTS>&apos;all, data&apos;</CALL_ARGUMENTS>' ||
+        '%<OBJECT_NAME>other_pkg</OBJECT_NAME><PROCEDURE_NAME>prepare</PROCEDURE_NAME>%<CALL_ARGUMENTS>2</CALL_ARGUMENTS>' ||
+        '%</BEFORE_ALL_LIST>%'
+    );
+  end;
+
+  procedure before_aftertest_arguments is
+    l_actual      clob;
+    l_annotations ut3_develop.ut_annotations;
+  begin
+    --Arrange
+    l_annotations := ut3_develop.ut_annotations(
+        ut3_develop.ut_annotation(1, 'suite','Cool', null),
+        ut3_develop.ut_annotation(14, 'test','A test', 'some_test'),
+        ut3_develop.ut_annotation(15, 'beforetest', q'[setup('a, b', 1), other_pkg.setup(a_value => q'{x)}')]', 'some_test'),
+        ut3_develop.ut_annotation(16, 'aftertest', 'cleanup(), cleanup_all', 'some_test')
+    );
+    --Act
+    l_actual := invoke_builder_for_annotations(l_annotations, 'SOME_PACKAGE');
+    --Assert
+    ut.expect(l_actual).to_be_like(
+        '%<BEFORE_TEST_LIST>' ||
+        '%<OBJECT_NAME>some_package</OBJECT_NAME><PROCEDURE_NAME>setup</PROCEDURE_NAME>%<CALL_ARGUMENTS>&apos;a, b&apos;, 1</CALL_ARGUMENTS>' ||
+        '%<OBJECT_NAME>other_pkg</OBJECT_NAME><PROCEDURE_NAME>setup</PROCEDURE_NAME>%<CALL_ARGUMENTS>a_value =%q&apos;{x)}&apos;</CALL_ARGUMENTS>' ||
+        '%</BEFORE_TEST_LIST>' ||
+        '%<AFTER_TEST_LIST>' ||
+        '%<OBJECT_NAME>some_package</OBJECT_NAME><PROCEDURE_NAME>cleanup</PROCEDURE_NAME>%<CALL_ARGUMENTS/>' ||
+        '%<OBJECT_NAME>some_package</OBJECT_NAME><PROCEDURE_NAME>cleanup_all</PROCEDURE_NAME>%<CALL_ARGUMENTS/>' ||
+        '%</AFTER_TEST_LIST>%'
+    );
+  end;
+
+  procedure testcase_creates_test_per_case is
+    l_actual      clob;
+    l_annotations ut3_develop.ut_annotations;
+  begin
+    --Arrange
+    l_annotations := ut3_develop.ut_annotations(
+        ut3_develop.ut_annotation(1, 'suite','Cool', null),
+        ut3_develop.ut_annotation(14, 'test','A test', 'some_test'),
+        ut3_develop.ut_annotation(15, 'testcase', q'[2000, 'a, b']', 'some_test'),
+        ut3_develop.ut_annotation(16, 'testcase', 'a_amount => 1', 'some_test'),
+        ut3_develop.ut_annotation(17, 'tags', 'fast', 'some_test')
+    );
+    --Act
+    l_actual := invoke_builder_for_annotations(l_annotations, 'SOME_PACKAGE');
+    --Assert
+    ut.expect(l_actual).to_be_like(
+        '%<UT_SUITE_ITEM>%<NAME>some_test[1]</NAME>' ||
+        '%<DESCRIPTION>A test (2000, &apos;a, b&apos;)</DESCRIPTION><PATH>some_package.some_test[1]</PATH>' ||
+        '%<LINE_NO>15</LINE_NO>%<TAGS><VARCHAR2>fast</VARCHAR2></TAGS>' ||
+        '%<PROCEDURE_NAME>some_test</PROCEDURE_NAME>%<CALL_ARGUMENTS>2000, &apos;a, b&apos;</CALL_ARGUMENTS>' ||
+        '%</UT_SUITE_ITEM>' ||
+        '%<UT_SUITE_ITEM>%<NAME>some_test[2]</NAME>' ||
+        '%<PATH>some_package.some_test[2]</PATH>' ||
+        '%<LINE_NO>16</LINE_NO>%<TAGS><VARCHAR2>fast</VARCHAR2></TAGS>' ||
+        '%<CALL_ARGUMENTS>a_amount =%1</CALL_ARGUMENTS>' ||
+        '%</UT_SUITE_ITEM>%'
+    );
+    ut.expect(l_actual).not_to_be_like('%<PATH>some_package.some_test</PATH>%');
+  end;
+
+  procedure testcase_description_placeholders is
+    l_actual      clob;
+    l_annotations ut3_develop.ut_annotations;
+  begin
+    --Arrange
+    l_annotations := ut3_develop.ut_annotations(
+        ut3_develop.ut_annotation(1, 'suite','Cool', null),
+        ut3_develop.ut_annotation(14, 'test','Amount {1}, kind {a_kind}, unknown {3}', 'some_test'),
+        ut3_develop.ut_annotation(15, 'testcase', q'[100, a_kind => 'VIP']', 'some_test')
+    );
+    --Act
+    l_actual := invoke_builder_for_annotations(l_annotations, 'SOME_PACKAGE');
+    --Assert
+    ut.expect(l_actual).to_be_like(
+        '%<DESCRIPTION>Amount 100, kind &apos;VIP&apos;, unknown {3}</DESCRIPTION><PATH>some_package.some_test[1]</PATH>%'
+    );
+  end;
+
+  procedure testcase_without_test is
+    l_actual      clob;
+    l_annotations ut3_develop.ut_annotations;
+  begin
+    --Arrange
+    l_annotations := ut3_develop.ut_annotations(
+        ut3_develop.ut_annotation(1, 'suite','Cool', null),
+        ut3_develop.ut_annotation(15, 'testcase', '1', 'some_procedure')
+    );
+    --Act
+    l_actual := invoke_builder_for_annotations(l_annotations, 'SOME_PACKAGE');
+    --Assert
+    ut.expect(l_actual).to_be_like(
+        '%<WARNINGS>%Annotation &quot;--%testcase&quot; can only be used with &quot;--%test&quot;. Annotation ignored.%</WARNINGS>%'
+    );
+    ut.expect(l_actual).not_to_be_like('%<UT_SUITE_ITEM>%');
+  end;
+
 end test_suite_builder;
 /

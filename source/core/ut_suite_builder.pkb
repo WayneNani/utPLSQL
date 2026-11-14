@@ -25,6 +25,7 @@ create or replace noneditionable package body ut_suite_builder is
   gc_suitepath                   constant t_annotation_name := 'suitepath';
   gc_tags                        constant t_annotation_name := 'tags';
   gc_test                        constant t_annotation_name := ut_utils.gc_test_execute;
+  gc_testcase                    constant t_annotation_name := 'testcase';
   gc_disabled                    constant t_annotation_name := 'disabled';
   gc_displayname                 constant t_annotation_name := 'displayname';
   gc_beforeall                   constant t_annotation_name := ut_utils.gc_before_all;
@@ -47,6 +48,7 @@ create or replace noneditionable package body ut_suite_builder is
       gc_suitepath,
       gc_tags,
       gc_test,
+      gc_testcase,
       gc_disabled,
       gc_displayname,
       gc_beforeall,
@@ -263,21 +265,25 @@ create or replace noneditionable package body ut_suite_builder is
     l_procedures_list ut_varchar2_list;
     l_procedures_pos  binary_integer;
     l_components_list ut_varchar2_list;
+    l_call            varchar2(4000);
+    l_arguments_start binary_integer;
   begin
     l_annotation_pos := a_annotation_texts.first;
     while l_annotation_pos is not null loop
       l_procedures_list :=
         ut_utils.filter_list(
-          ut_utils.trim_list_elements(
-            ut_utils.string_to_table(a_annotation_texts(l_annotation_pos), ',')
-          )
+          ut_utils.split_top_level(a_annotation_texts(l_annotation_pos), ',')
           , '[[:alpha:]]+'
         );
 
       l_procedures_pos := l_procedures_list.first;
       l_executables := ut_executables();
       while l_procedures_pos is not null loop
-        l_components_list := ut_utils.string_to_table(l_procedures_list(l_procedures_pos), '.');
+        l_call := l_procedures_list(l_procedures_pos);
+        l_arguments_start := instr(l_call, '(');
+        l_components_list := ut_utils.split_top_level(
+          case when l_arguments_start > 0 then substr(l_call, 1, l_arguments_start - 1) else l_call end, '.'
+        );
 
         l_executables.extend;
         l_executables(l_executables.last) :=
@@ -291,6 +297,10 @@ create or replace noneditionable package body ut_suite_builder is
             else
               null
           end;
+        if l_arguments_start > 0 and l_executables(l_executables.last) is not null then
+          l_executables(l_executables.last).call_arguments :=
+            trim(regexp_replace(substr(l_call, l_arguments_start + 1), '\)$'));
+        end if;
         l_procedures_pos := l_procedures_list.next(l_procedures_pos);
       end loop;
       l_result(l_annotation_pos) := l_executables;
@@ -345,6 +355,52 @@ create or replace noneditionable package body ut_suite_builder is
     end if;
   end;
 
+  function get_test_case_description(a_description varchar2, a_arguments varchar2) return varchar2 is
+    c_named_argument constant varchar2(50) := '^([[:alpha:]][[:alnum:]_$#]*)\s*=>\s*';
+    l_arguments ut_varchar2_list;
+    l_name      varchar2(4000);
+    l_value     varchar2(4000);
+    l_result    varchar2(32767) := a_description;
+  begin
+    if not regexp_like(a_description, '\{[[:alnum:]_$#]+\}') then
+      return a_description || case when a_arguments is not null then ' (' || a_arguments || ')' end;
+    end if;
+    l_arguments := ut_utils.split_top_level(a_arguments);
+    for i in 1 .. l_arguments.count loop
+      l_name  := regexp_substr(l_arguments(i), c_named_argument, subexpression => 1);
+      l_value := regexp_replace(l_arguments(i), c_named_argument);
+      l_result := replace(l_result, '{' || i || '}', l_value);
+      if l_name is not null then
+        l_result := replace(replace(l_result, '{' || l_name || '}', l_value), '{' || lower(l_name) || '}', l_value);
+      end if;
+    end loop;
+    return l_result;
+  end;
+
+  procedure add_test_cases(
+    a_suite_items in out nocopy ut_suite_items,
+    a_test        ut_test,
+    a_test_cases  tt_annotation_texts
+  ) is
+    l_test     ut_test;
+    l_position t_annotation_position := a_test_cases.first;
+    l_case_no  binary_integer := 0;
+  begin
+    while l_position is not null loop
+      l_case_no := l_case_no + 1;
+      l_test := a_test;
+      -- each case gets its own cache row, keyed by owner + path and by owner + package + line
+      l_test.line_no := l_position;
+      l_test.name := a_test.name || '[' || l_case_no || ']';
+      l_test.path := a_test.path || '[' || l_case_no || ']';
+      l_test.item.call_arguments := trim(a_test_cases(l_position));
+      l_test.description := get_test_case_description(a_test.description, l_test.item.call_arguments);
+      a_suite_items.extend;
+      a_suite_items(a_suite_items.last) := l_test;
+      l_position := a_test_cases.next(l_position);
+    end loop;
+  end;
+
   procedure add_test(
     a_suite            in out nocopy ut_suite,
     a_suite_items      in out nocopy ut_suite_items,
@@ -354,9 +410,19 @@ create or replace noneditionable package body ut_suite_builder is
     l_test             ut_test;
     l_annotation_texts tt_annotation_texts;
     l_proc_annotations tt_annotations_by_name :=  a_annotations.by_proc(a_procedure_name);
+    l_position         t_annotation_position;
   begin
 
     if not l_proc_annotations.exists(gc_test) then
+      if l_proc_annotations.exists(gc_testcase) then
+        l_position := l_proc_annotations(gc_testcase).first;
+        while l_position is not null loop
+          add_annotation_ignored_warning(
+            a_suite, gc_testcase, 'Annotation %%% can only be used with "--%test".', l_position, a_procedure_name
+          );
+          l_position := l_proc_annotations(gc_testcase).next(l_position);
+        end loop;
+      end if;
       return;
     end if;
     warning_on_duplicate_annot( a_suite, l_proc_annotations, gc_test, a_procedure_name);
@@ -419,8 +485,12 @@ create or replace noneditionable package body ut_suite_builder is
       l_test.disabled_reason := l_annotation_texts(l_annotation_texts.first);
     end if;
 
-    a_suite_items.extend;
-    a_suite_items( a_suite_items.last ) := l_test;
+    if l_proc_annotations.exists(gc_testcase) then
+      add_test_cases(a_suite_items, l_test, l_proc_annotations(gc_testcase));
+    else
+      a_suite_items.extend;
+      a_suite_items( a_suite_items.last ) := l_test;
+    end if;
 
   end;
 

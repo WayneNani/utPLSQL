@@ -237,6 +237,22 @@ create or replace noneditionable package ut_utils authid definer is
 
   /**
    *
+   * Splits a PL/SQL fragment, such as an argument list, at a single-character delimiter.
+   * Delimiters inside parentheses, string literals ('it''s', q'[...]', n'...') and quoted identifiers ("a.b") are not split.
+   * Each element is trimmed. If null a_text passed, empty table is returned.
+   * An unterminated literal makes the rest of the text the last element.
+   * Example:
+   *   split_top_level( q'[f(1, 2), 'a,b', "x.y"]', ',' ) gives table ut_varchar2_list( 'f(1, 2)', q'['a,b']', '"x.y"' );
+   *
+   * @param a_text      the text to be split
+   * @param a_delimiter the delimiter character
+   *
+   * @return table of varchar2 values
+   */
+  function split_top_level(a_text varchar2, a_delimiter varchar2 := ',') return ut_varchar2_list;
+
+  /**
+   *
    * Splits each string in table of string into a table of string using specified delimiter.
    * The delimiter gets removed.
    * If null a_delimiter passed, a_list is returned as-is.
