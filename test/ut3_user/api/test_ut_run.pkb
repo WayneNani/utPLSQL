@@ -1768,8 +1768,22 @@ procedure tag_exclude_run_fun_pth_lst_lg is
 
   procedure create_suite_with_test_cases is
     pragma autonomous_transaction;
+    l_boolean_spec varchar2(4000);
+    l_boolean_body varchar2(4000);
   begin
+    $if dbms_db_version.version >= 23 $then
+    l_boolean_spec := q'~
+      --%test(Flag {a_flag} is {a_label})
+      --%testcasesource(select true a_flag, 'yes' a_label from dual union all select false, 'no' from dual)
+      procedure boolean_values(a_flag boolean, a_label varchar2);~';
+    l_boolean_body := q'~
+      procedure boolean_values(a_flag boolean, a_label varchar2) is
+      begin
+        ut3_develop.ut.expect(case when a_flag then 'yes' when not a_flag then 'no' end).to_equal(a_label);
+      end;~';
+    $end
     execute immediate 'create or replace type test_case_pair force as object (amount number, half number)';
+    execute immediate 'create or replace type test_case_numbers force as table of number';
     execute immediate 'create table test_case_rows (a_amount number, a_half number)';
     execute immediate q'~create or replace package test_cases_in_ut3_user is
       --%suite(Test cases)
@@ -1823,6 +1837,17 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       --%test
       --%testcasesource(select 1 a_value from dual)
       procedure no_description(a_value number);
+
+      --%test(Values of different types)
+      --%testcasesource(select 'x''y' a_text, date '2026-01-02' a_day, timestamp '2026-01-02 03:04:05.6' a_moment, to_clob('long') a_note, hextoraw('0AFF') a_bytes, interval '1 02:03:04' day to second a_period, test_case_numbers(1, 2, 3) a_numbers, cast(null as number) a_nothing from dual)
+      procedure typed_values(
+        a_text varchar2, a_day date, a_moment timestamp, a_note clob, a_bytes raw,
+        a_period interval day to second, a_numbers test_case_numbers, a_nothing number
+      );
+
+      --%test(Value of a type that can't be passed)
+      --%testcasesource(select xmltype('<a/>') a_xml from dual)
+      procedure xml_value(a_xml xmltype);~' || l_boolean_spec || q'~
     end;~';
     execute immediate q'~create or replace package body test_cases_in_ut3_user is
       procedure start_log(a_text varchar2) is
@@ -1869,7 +1894,8 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       end;
       procedure vanishing_row(a_amount number, a_half number) is
       begin
-        null;
+        ut3_develop.ut.expect(a_amount).to_be_not_null();
+        ut3_develop.ut.expect(a_half).to_be_not_null();
       end;
       procedure delete_test_case_rows is
       begin
@@ -1879,6 +1905,25 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       begin
         null;
       end;
+      procedure typed_values(
+        a_text varchar2, a_day date, a_moment timestamp, a_note clob, a_bytes raw,
+        a_period interval day to second, a_numbers test_case_numbers, a_nothing number
+      ) is
+      begin
+        ut3_develop.ut.expect(a_text).to_equal('x''y');
+        ut3_develop.ut.expect(a_day).to_equal(date '2026-01-02');
+        ut3_develop.ut.expect(a_moment).to_equal(timestamp '2026-01-02 03:04:05.6');
+        ut3_develop.ut.expect(a_note).to_equal(to_clob('long'));
+        ut3_develop.ut.expect(rawtohex(a_bytes)).to_equal('0AFF');
+        ut3_develop.ut.expect(a_period).to_equal(interval '1 02:03:04' day to second);
+        ut3_develop.ut.expect(a_numbers.count).to_equal(3);
+        ut3_develop.ut.expect(a_numbers(3)).to_equal(3);
+        ut3_develop.ut.expect(a_nothing).to_be_null();
+      end;
+      procedure xml_value(a_xml xmltype) is
+      begin
+        null;
+      end;~' || l_boolean_body || q'~
     end;~';
   end;
 
@@ -1888,6 +1933,7 @@ procedure tag_exclude_run_fun_pth_lst_lg is
     execute immediate 'drop package test_cases_in_ut3_user';
     execute immediate 'drop table test_case_rows purge';
     execute immediate 'drop type test_case_pair';
+    execute immediate 'drop type test_case_numbers';
   end;
 
   procedure run_test_cases is
@@ -1906,7 +1952,7 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       '%Half of 4 from table is 2 [%' ||
       '%Half of 10 from table is 5 [%' ||
       '%Half of a pair (<%TEST_CASE_PAIR>) [%' ||
-      '%14 tests, 2 failed, 4 errored, 1 disabled%'
+      '% tests, 2 failed, 2 errored, 1 disabled%'
     );
   end;
 
@@ -2002,10 +2048,44 @@ procedure tag_exclude_run_fun_pth_lst_lg is
     --Act
     select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.vanishing_row'));
     --Assert
+    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like('%3 tests, 0 failed, 0 errored%');
+  end;
+
+  procedure run_test_case_source_types is
+    l_results ut3_develop.ut_varchar2_list;
+  begin
+    --Act
+    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.typed_values'));
+    --Assert
     ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
-      '%ORA-20220: The --%testcasesource query no longer returns row 1 of this test case.%3 tests, 0 failed, 3 errored%'
+      '%Values of different types (x''y, %, long, 0AFF, %, <%TEST_CASE_NUMBERS>, null) [%1 tests, 0 failed, 0 errored%'
     );
   end;
+
+  procedure run_test_case_source_bad_type is
+    l_results ut3_develop.ut_varchar2_list;
+  begin
+    --Act
+    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.xml_value'));
+    --Assert
+    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
+      '%The --%testcasesource query failed.%ORA-20220: Column A_XML of the --%testcasesource query has a data type ' ||
+      'that can''t be passed to the test: XMLTYPE%1 tests, 0 failed, 1 errored%'
+    );
+  end;
+
+  $if dbms_db_version.version >= 23 $then
+  procedure run_test_case_source_boolean is
+    l_results ut3_develop.ut_varchar2_list;
+  begin
+    --Act
+    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.boolean_values'));
+    --Assert
+    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
+      '%Flag true is yes [%Flag false is no [%2 tests, 0 failed, 0 errored%'
+    );
+  end;
+  $end
 
   procedure run_test_case_source_no_descr is
     l_results ut3_develop.ut_varchar2_list;

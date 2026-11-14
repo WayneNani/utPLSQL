@@ -35,11 +35,12 @@ create or replace noneditionable type ut_executable under ut_event_item(
   */
   call_arguments        varchar2(4000 char),
   /**
-  * Query of a --%testcasesource annotation. The procedure is called with row call_source_row, call_arguments refer to it as r.
+  * Query of a --%testcasesource annotation
   */
   call_source           varchar2(4000 char),
   /**
-  * Row of the call_source query for a test case; null for the test that holds the query and is not yet split into test cases.
+  * Row of the call_source query a test case was made from; null for the test that is not yet split into its test cases.
+  * The values of the row are kept in ut_test_case_values.
   */
   call_source_row       integer,
 	constructor function ut_executable( self in out nocopy ut_executable, a_owner varchar2, a_package varchar2, a_procedure_name varchar2, a_executable_type varchar2) return self as result,

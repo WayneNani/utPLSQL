@@ -57,12 +57,43 @@ create or replace noneditionable type body ut_executable is
   return boolean is
     l_statement                   varchar2(32767);
     l_call                        varchar2(32767);
+    l_values                      ut_anydata_list;
     l_status                      number;
     l_cursor_number               number;
     l_completed_without_errors    boolean := true;
     l_failed_with_invalid_pck     boolean := true;
     l_start_transaction_id        varchar2(250);
     l_end_transaction_id          varchar2(250);
+
+    /*
+      Unpacks the argument values of a --%testcasesource test case, bound as :ut_values.
+      Object types and collections need a variable of their type; other values are read by the call itself.
+    */
+    function get_test_case_call(a_values ut_anydata_list, a_call varchar2) return varchar2 is
+      l_declarations varchar2(32767);
+      l_unpacking    varchar2(32767);
+      l_type         anytype;
+    begin
+      for i in 1 .. a_values.count loop
+        if a_values(i).GetTypeName() not like 'SYS.%' then
+          l_declarations := l_declarations ||
+            '      l_ut_value_' || i || ' "' || replace(a_values(i).GetTypeName(), '.', '"."') || '";' || chr(10);
+          l_unpacking := l_unpacking ||
+            '      l_ut_rc := l_ut_values(' || i || ').' ||
+            case when a_values(i).GetType(l_type) = dbms_types.typecode_object then 'GetObject' else 'GetCollection' end ||
+            '(l_ut_value_' || i || ');' || chr(10);
+        end if;
+      end loop;
+      return
+        'declare' || chr(10) ||
+        '      l_ut_values ' || ut_utils.ut_owner || '.ut_anydata_list := :ut_values;' || chr(10) ||
+        '      l_ut_rc     pls_integer;' || chr(10) ||
+        l_declarations ||
+        '    begin' || chr(10) ||
+        l_unpacking ||
+        '      ' || a_call || chr(10) ||
+        '    end;';
+    end;
 
     function is_defined return boolean is
       l_result boolean := false;
@@ -122,20 +153,8 @@ create or replace noneditionable type body ut_executable is
     if l_completed_without_errors then
       l_call := self.form_name( a_skip_current_user_schema => true ) || case when self.call_arguments is not null then '(' || self.call_arguments || ')' end || ';';
       if self.call_source is not null then
-        l_call :=
-          'declare' || chr(10) ||
-          '      l_row_found boolean := false;' || chr(10) ||
-          '    begin' || chr(10) ||
-          '      for r in (select * from (select ut_q.*, rownum ut_test_case_row from (' || self.call_source || ') ut_q)' ||
-          ' where ut_test_case_row = ' || self.call_source_row || ') loop' || chr(10) ||
-          '        l_row_found := true;' || chr(10) ||
-          '        ' || l_call || chr(10) ||
-          '      end loop;' || chr(10) ||
-          '      if not l_row_found then' || chr(10) ||
-          '        raise_application_error(' || ut_utils.gc_test_case_row_not_found ||
-          ', ''The --%testcasesource query no longer returns row ' || self.call_source_row || ' of this test case.'');' || chr(10) ||
-          '      end if;' || chr(10) ||
-          '    end;';
+        l_values := ut_test_case_values.get_values(a_item.path);
+        l_call := get_test_case_call(l_values, l_call);
       end if;
       l_statement :=
       'declare' || chr(10) ||
@@ -179,6 +198,9 @@ create or replace noneditionable type body ut_executable is
       **/
       begin
         dbms_sql.parse(l_cursor_number, statement => l_statement, language_flag => dbms_sql.native);
+        if l_values is not null then
+          dbms_sql.bind_variable(l_cursor_number, 'ut_values', l_values);
+        end if;
         dbms_sql.bind_variable(l_cursor_number, 'a_error_stack', to_char(null), 32767);
         dbms_sql.bind_variable(l_cursor_number, 'a_error_backtrace', to_char(null), 32767);
         dbms_sql.bind_variable(l_cursor_number, 'a_ignored_exception_detected', to_number(null));

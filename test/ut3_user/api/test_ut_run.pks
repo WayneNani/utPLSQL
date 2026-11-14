@@ -387,8 +387,19 @@ create or replace package test_ut_run is
     --%test(Does not run the --%testcasesource query of a disabled test)
     procedure run_test_case_source_disabled;
 
-    --%test(Reports a test case as errored when its row is gone when it runs)
+    --%test(Passes the values read before the first test case even when the rows are gone)
     procedure run_test_case_source_row_gone;
+
+    --%test(Passes values of different data types from the --%testcasesource query)
+    procedure run_test_case_source_types;
+
+    --%test(Reports the test as errored when a column of the --%testcasesource query has an unsupported type)
+    procedure run_test_case_source_bad_type;
+
+    $if dbms_db_version.version >= 23 $then
+    --%test(Passes BOOLEAN values from the --%testcasesource query)
+    procedure run_test_case_source_boolean;
+    $end
 
     --%test(Names a test case of a test without description by its procedure)
     procedure run_test_case_source_no_descr;

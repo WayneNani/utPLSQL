@@ -181,21 +181,22 @@ create or replace noneditionable type body ut_test as
   end;
 
   member function get_source_test_cases(self in ut_test) return ut_suite_items is
-    l_parameters ut_metadata.tt_parameters :=
+    type tt_value_rows is table of ut_anydata_list;
+    type tt_display_rows is table of ut_varchar2_list;
+    l_parameters   ut_metadata.tt_parameters :=
       ut_metadata.get_package_parameters(upper(self.item.owner_name), upper(self.item.object_name));
-    l_result     ut_suite_items := ut_suite_items();
-    l_cursor     integer;
-    l_status     integer;
-    l_columns    dbms_sql.desc_tab3;
-    l_count      integer;
-    l_named      boolean := false;
-    l_arguments  varchar2(4000 char);
-    l_select     varchar2(32767);
-    l_names      ut_varchar2_list := ut_varchar2_list();
-    l_values     ut_varchar2_list;
-    l_value      varchar2(4000 char);
-    l_test       ut_test;
-    l_row_no     integer := 0;
+    l_result       ut_suite_items := ut_suite_items();
+    l_cursor       integer;
+    l_columns      dbms_sql.desc_tab3;
+    l_count        integer;
+    l_named        boolean := false;
+    l_arguments    varchar2(4000 char);
+    l_values_list  varchar2(32767);
+    l_display_list varchar2(32767);
+    l_value_rows   tt_value_rows;
+    l_display_rows tt_display_rows;
+    l_names        ut_varchar2_list := ut_varchar2_list();
+    l_test         ut_test;
 
     function is_parameter(a_column_name varchar2) return boolean is
     begin
@@ -208,6 +209,80 @@ create or replace noneditionable type body ut_test as
       return false;
     end;
 
+    function is_collection(a_column dbms_sql.desc_rec3) return boolean is
+      l_typecode all_types.typecode%type;
+    begin
+      select /*+ no_parallel */ typecode into l_typecode
+        from all_types
+       where owner = a_column.col_schema_name and type_name = a_column.col_type_name;
+      return l_typecode = 'COLLECTION';
+    end;
+
+    procedure raise_unsupported(a_column dbms_sql.desc_rec3) is
+    begin
+      raise_application_error(
+        ut_utils.gc_invalid_test_case_source,
+        'Column ' || a_column.col_name || ' of the --%testcasesource query has a data type that can''t be passed to the test: '
+        || nvl(a_column.col_type_name, to_char(a_column.col_type))
+      );
+    end;
+
+    -- the value of a column as ANYDATA; BOOLEAN has no ANYDATA representation, so it travels as 1 or 0
+    function value_expression(a_column dbms_sql.desc_rec3) return varchar2 is
+      l_column   varchar2(200 char) := 'ut_r."' || a_column.col_name || '"';
+      l_national boolean := a_column.col_charsetform = 2;
+    begin
+      return 'sys.anydata.' ||
+        case a_column.col_type
+          when 1   then case when l_national then 'ConvertNVarchar2' else 'ConvertVarchar2' end
+          when 96  then case when l_national then 'ConvertNChar' else 'ConvertChar' end
+          when 2   then 'ConvertNumber'
+          when 100 then 'ConvertBFloat'
+          when 101 then 'ConvertBDouble'
+          when 12  then 'ConvertDate'
+          when 180 then 'ConvertTimestamp'
+          when 181 then 'ConvertTimestampTZ'
+          when 231 then 'ConvertTimestampLTZ'
+          when 182 then 'ConvertIntervalYM'
+          when 183 then 'ConvertIntervalDS'
+          when 112 then case when l_national then 'ConvertNClob' else 'ConvertClob' end
+          when 113 then 'ConvertBlob'
+          when 23  then 'ConvertRaw'
+          when 109 then case when is_collection(a_column) then 'ConvertCollection' else 'ConvertObject' end
+          when 252 then 'ConvertNumber'
+        end ||
+        case when a_column.col_type = 252
+          then '(case when ' || l_column || ' then 1 when not ' || l_column || ' then 0 end)'
+          else '(' || l_column || ')'
+        end;
+    end;
+
+    -- the argument passed to the test procedure; ut_executable declares l_ut_value_<n> for object types and collections
+    function argument_expression(a_column dbms_sql.desc_rec3, a_position integer) return varchar2 is
+      l_value    varchar2(200 char) := 'l_ut_values(' || a_position || ')';
+      l_national boolean := a_column.col_charsetform = 2;
+    begin
+      return
+        case a_column.col_type
+          when 1   then l_value || case when l_national then '.AccessNVarchar2()' else '.AccessVarchar2()' end
+          when 96  then l_value || case when l_national then '.AccessNChar()' else '.AccessChar()' end
+          when 2   then l_value || '.AccessNumber()'
+          when 100 then l_value || '.AccessBFloat()'
+          when 101 then l_value || '.AccessBDouble()'
+          when 12  then l_value || '.AccessDate()'
+          when 180 then l_value || '.AccessTimestamp()'
+          when 181 then l_value || '.AccessTimestampTZ()'
+          when 231 then l_value || '.AccessTimestampLTZ()'
+          when 182 then l_value || '.AccessIntervalYM()'
+          when 183 then l_value || '.AccessIntervalDS()'
+          when 112 then l_value || case when l_national then '.AccessNClob()' else '.AccessClob()' end
+          when 113 then l_value || '.AccessBlob()'
+          when 23  then l_value || '.AccessRaw()'
+          when 109 then 'l_ut_value_' || a_position
+          when 252 then 'case ' || l_value || '.AccessNumber() when 1 then true when 0 then false end'
+        end;
+    end;
+
     function display_expression(a_column dbms_sql.desc_rec3) return varchar2 is
       l_column varchar2(200 char) := 'ut_r."' || a_column.col_name || '"';
     begin
@@ -215,6 +290,7 @@ create or replace noneditionable type body ut_test as
         case
           when a_column.col_type in (1, 2, 12, 96, 100, 101, 180, 181, 182, 183, 231) then 'to_char(' || l_column || ')'
           when a_column.col_type = 112 then 'dbms_lob.substr(' || l_column || ', 100)'
+          when a_column.col_type = 23 then 'rawtohex(' || l_column || ')'
           when a_column.col_type = 252 then 'case when ' || l_column || ' then ''true'' when not ' || l_column || ' then ''false'' end'
           else '''<' || nvl(a_column.col_type_name, 'value') || '>'''
         end;
@@ -224,50 +300,6 @@ create or replace noneditionable type body ut_test as
     begin
       dbms_sql.parse(l_cursor, 'select * from (' || self.item.call_source || ')', dbms_sql.native);
       dbms_sql.describe_columns3(l_cursor, l_count, l_columns);
-      -- columns named like parameters are passed by name; when none is, all columns are passed by position
-      for i in 1 .. l_count loop
-        l_named := l_named or is_parameter(l_columns(i).col_name);
-      end loop;
-      for i in 1 .. l_count loop
-        if not l_named or is_parameter(l_columns(i).col_name) then
-          l_arguments := l_arguments || case when l_arguments is not null then ', ' end
-            || case when l_named then '"' || l_columns(i).col_name || '" => ' end || 'r."' || l_columns(i).col_name || '"';
-        end if;
-        l_select := l_select || case when i > 1 then ', ' end || display_expression(l_columns(i));
-        l_names.extend;
-        l_names(i) := l_columns(i).col_name;
-      end loop;
-
-      -- rownum numbers the rows in the order the query returns them; ut_executable selects a test case's row the same way
-      dbms_sql.parse(
-        l_cursor,
-        'select ' || l_select || ' from (select ut_q.*, rownum ut_test_case_row from (' || self.item.call_source || ') ut_q) ut_r' ||
-        ' order by ut_r.ut_test_case_row',
-        dbms_sql.native
-      );
-      for i in 1 .. l_count loop
-        dbms_sql.define_column(l_cursor, i, l_value, 4000);
-      end loop;
-      l_status := dbms_sql.execute(l_cursor);
-      while dbms_sql.fetch_rows(l_cursor) > 0 loop
-        l_row_no := l_row_no + 1;
-        l_values := ut_varchar2_list();
-        for i in 1 .. l_count loop
-          dbms_sql.column_value(l_cursor, i, l_value);
-          l_values.extend;
-          l_values(i) := nvl(l_value, 'null');
-        end loop;
-        l_test := self;
-        l_test.name := self.name || '[' || l_row_no || ']';
-        l_test.path := self.path || '[' || l_row_no || ']';
-        l_test.description := ut_utils.get_test_case_description(
-          self.description, l_names, l_values, ut_utils.table_to_clob(l_values, ', ')
-        );
-        l_test.item.call_source_row := l_row_no;
-        l_test.item.call_arguments := l_arguments;
-        l_result.extend;
-        l_result(l_result.last) := l_test;
-      end loop;
       dbms_sql.close_cursor(l_cursor);
     exception
       when others then
@@ -276,6 +308,51 @@ create or replace noneditionable type body ut_test as
         end if;
         raise;
     end;
+
+    for i in 1 .. l_count loop
+      if l_columns(i).col_type not in (1, 2, 12, 23, 96, 100, 101, 109, 112, 113, 180, 181, 182, 183, 231, 252)
+        or l_columns(i).col_type = 109 and l_columns(i).col_schema_name = 'SYS' then
+        raise_unsupported(l_columns(i));
+      end if;
+      l_named := l_named or is_parameter(l_columns(i).col_name);
+    end loop;
+    -- columns named like parameters are passed by name; when none is, all columns are passed by position
+    for i in 1 .. l_count loop
+      if not l_named or is_parameter(l_columns(i).col_name) then
+        l_arguments := l_arguments || case when l_arguments is not null then ', ' end
+          || case when l_named then '"' || l_columns(i).col_name || '" => ' end || argument_expression(l_columns(i), i);
+      end if;
+      l_values_list := l_values_list || case when i > 1 then ', ' end || value_expression(l_columns(i));
+      l_display_list := l_display_list || case when i > 1 then ', ' end || display_expression(l_columns(i));
+      l_names.extend;
+      l_names(i) := l_columns(i).col_name;
+    end loop;
+
+    -- the query runs once; each test case gets the values of its row, so later changes of the data don't affect it
+    execute immediate
+      'select ' || ut_utils.ut_owner || '.ut_anydata_list(' || l_values_list || '), '
+        || ut_utils.ut_owner || '.ut_varchar2_list(' || l_display_list || ')' ||
+      ' from (select ut_q.*, rownum ut_test_case_row from (' || self.item.call_source || ') ut_q) ut_r' ||
+      ' order by ut_r.ut_test_case_row'
+      bulk collect into l_value_rows, l_display_rows;
+
+    for l_row_no in 1 .. l_value_rows.count loop
+      for i in 1 .. l_count loop
+        l_display_rows(l_row_no)(i) := nvl(l_display_rows(l_row_no)(i), 'null');
+      end loop;
+      l_test := self;
+      l_test.name := self.name || '[' || l_row_no || ']';
+      l_test.path := self.path || '[' || l_row_no || ']';
+      l_test.description := ut_utils.get_test_case_description(
+        self.description, l_names, l_display_rows(l_row_no),
+        ut_utils.table_to_clob(l_display_rows(l_row_no), ', ')
+      );
+      ut_test_case_values.set_values(l_test.path, l_value_rows(l_row_no));
+      l_test.item.call_source_row := l_row_no;
+      l_test.item.call_arguments := l_arguments;
+      l_result.extend;
+      l_result(l_result.last) := l_test;
+    end loop;
     return l_result;
   end;
 end;

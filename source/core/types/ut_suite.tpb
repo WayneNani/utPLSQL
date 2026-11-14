@@ -73,6 +73,7 @@ create or replace noneditionable type body ut_suite  as
             end if;
             for j in 1 .. l_cases.count loop
               l_cases(j).do_execute();
+              ut_test_case_values.remove_values(l_cases(j).path);
               add_item(l_cases(j));
             end loop;
           end if;

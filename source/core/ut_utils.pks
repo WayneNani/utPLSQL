@@ -126,8 +126,8 @@ create or replace noneditionable package ut_utils authid definer is
   gc_invalid_tag_expression constant pls_integer := -20219;
   pragma exception_init (ex_invalid_tag_expression, -20219);  
 
-  -- the row of a --%testcasesource test case is no longer returned by its query
-  gc_test_case_row_not_found constant pls_integer := -20220;
+  -- the query of a --%testcasesource annotation returns a column that can't be passed to the test
+  gc_invalid_test_case_source constant pls_integer := -20220;
 
   -- an argument passed by name: group 1 is the parameter name
   gc_named_argument_pattern constant varchar2(50) := '^([[:alpha:]][[:alnum:]_$#]*)\s*=>\s*';

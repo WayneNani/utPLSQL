@@ -428,11 +428,14 @@ It suits test data that is easier to keep in a table, including complex data suc
 - The query runs when the suite runs, after its `--%beforeall` procedures, so it sees the data they create. Each test case is rolled back as usual.
 - Columns named like a parameter of the test procedure are passed to that parameter. Other columns are not passed, but can be used in the description.
   If no column is named like a parameter, all columns are passed by position.
-- Each row becomes a separate test, named `<procedure>[1]`, `<procedure>[2]`, ... in the order the query returns the rows.
-- Each test case runs the query again and takes its row by number, so the query has to return the same rows in the same order every time:
-  use `order by` on a unique key, and don't change the source data in `--%beforeeach`, `--%beforetest` or earlier test cases.
-  If the row of a test case is gone when it runs, the test case errors with `ORA-20220`.
-  As the query runs once per test case and once more to find the rows, keep it cheap.
+- Each row becomes a separate test, named `<procedure>[1]`, `<procedure>[2]`, ... in the order the query returns the rows. Use `order by` to keep the numbers stable.
+- The query runs once, before the first test case. The values of all rows are read at that moment and kept in memory until their test case has run,
+  so changes to the source data in `--%beforeeach`, `--%beforetest` or earlier test cases don't affect the values of later test cases.
+  Keep the number of rows and the size of LOB values reasonable.
+- The columns can have these data types: `VARCHAR2`, `CHAR`, `NVARCHAR2`, `NCHAR`, `NUMBER`, `BINARY_FLOAT`, `BINARY_DOUBLE`, `DATE`, `TIMESTAMP` (also with (local) time zone),
+  `INTERVAL`, `CLOB`, `NCLOB`, `BLOB`, `RAW`, `BOOLEAN` (Oracle 23 and later) and object types and collections that are not owned by `SYS`.
+  The values keep their type, so no conversion to text and back takes place.
+  Other types, such as `XMLTYPE`, `JSON`, `LONG` or `ROWID`, make the test error with `ORA-20220`; convert them in the query, for example with `xmltype.getClobVal()`.
 - A disabled test doesn't run its query.
 - The description can refer to the values of a row with `{1}`, `{2}`, ... (column position) and `{<column name>}`.
   Values of object types and collections are shown as `<TYPE_NAME>`. Without any placeholder, the values are appended to the description in brackets.
