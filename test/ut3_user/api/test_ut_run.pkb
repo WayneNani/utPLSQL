@@ -2045,7 +2045,7 @@ procedure tag_exclude_run_fun_pth_lst_lg is
     select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.broken_source'));
     --Assert
     ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
-      '%The --%testcasesource query failed.%TABLE_THAT_DOES_NOT_EXIST%1 tests, 0 failed, 1 errored%'
+      '%The --%testcasesource query failed.%ORA-00942%1 tests, 0 failed, 1 errored%'
     );
   end;
 
