@@ -172,7 +172,7 @@ create or replace noneditionable package body ut_test_case_json as
           else
             raise_invalid(
               'parameter ' || a_parameter.parameter_name || ' has a data type that can''t be passed from JSON: '
-              || nvl(a_parameter.type_name, l_type)
+              || nvl(a_parameter.type_name || case when a_parameter.type_subname is not null then '.' || a_parameter.type_subname end, l_type)
             );
         end case;
         l_expression := nvl(l_expression, 'json_value(l_ut_json, ''' || a_path || ''' returning ' || l_returning || ' error on error)');
