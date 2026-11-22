@@ -31,16 +31,17 @@ create or replace noneditionable type ut_executable under ut_event_item(
   */
   seq_no                integer,
   /**
-  * PL/SQL argument list passed to the procedure, without the enclosing parentheses, e.g. 'VIP', 2000
+  * Arguments passed to the procedure: a PL/SQL argument list without the enclosing parentheses, e.g. 'VIP', 2000,
+  * or a JSON array or object, e.g. ["VIP", 2000]
   */
   call_arguments        varchar2(4000 char),
   /**
-  * Query of a --%testcasesource annotation
+  * Function of a --%testcasesource annotation
   */
   call_source           varchar2(4000 char),
   /**
-  * Row of the call_source query a test case was made from; null for the test that is not yet split into its test cases.
-  * The values of the row are kept in ut_test_case_values.
+  * Number of the test case (element or row) the call_source function returned; null for the test that is not yet split
+  * into its test cases. The values of the test case are kept in ut_test_case_values.
   */
   call_source_row       integer,
 	constructor function ut_executable( self in out nocopy ut_executable, a_owner varchar2, a_package varchar2, a_procedure_name varchar2, a_executable_type varchar2) return self as result,

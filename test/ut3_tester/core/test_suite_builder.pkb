@@ -2093,14 +2093,14 @@ create or replace package body test_suite_builder is
     l_annotations := ut3_develop.ut_annotations(
         ut3_develop.ut_annotation(1, 'suite','Cool', null),
         ut3_develop.ut_annotation(14, 'test','A test', 'some_test'),
-        ut3_develop.ut_annotation(15, 'testcasesource', 'select 1 a_value from dual', 'some_test')
+        ut3_develop.ut_annotation(15, 'testcasesource', 'other_package.get_cases', 'some_test')
     );
     --Act
     l_actual := invoke_builder_for_annotations(l_annotations, 'SOME_PACKAGE');
     --Assert
     ut.expect(l_actual).to_be_like(
         '%<UT_SUITE_ITEM>%<NAME>some_test</NAME>%<PATH>some_package.some_test</PATH>' ||
-        '%<CALL_SOURCE>select 1 a_value from dual</CALL_SOURCE>%</UT_SUITE_ITEM>%'
+        '%<CALL_SOURCE>other_package.get_cases</CALL_SOURCE>%</UT_SUITE_ITEM>%'
     );
   end;
 
@@ -2113,10 +2113,12 @@ create or replace package body test_suite_builder is
         ut3_develop.ut_annotation(1, 'suite','Cool', null),
         ut3_develop.ut_annotation(14, 'test','Both', 'both_test'),
         ut3_develop.ut_annotation(15, 'testcase', '1', 'both_test'),
-        ut3_develop.ut_annotation(16, 'testcasesource', 'select 1 from dual', 'both_test'),
-        ut3_develop.ut_annotation(20, 'test','No query', 'no_query_test'),
-        ut3_develop.ut_annotation(21, 'testcasesource', null, 'no_query_test'),
-        ut3_develop.ut_annotation(25, 'testcasesource', 'select 1 from dual', 'not_a_test')
+        ut3_develop.ut_annotation(16, 'testcasesource', 'get_cases', 'both_test'),
+        ut3_develop.ut_annotation(20, 'test','No function', 'no_function_test'),
+        ut3_develop.ut_annotation(21, 'testcasesource', null, 'no_function_test'),
+        ut3_develop.ut_annotation(22, 'test','Query', 'query_test'),
+        ut3_develop.ut_annotation(23, 'testcasesource', 'select 1 from dual', 'query_test'),
+        ut3_develop.ut_annotation(25, 'testcasesource', 'get_cases', 'not_a_test')
     );
     --Act
     l_actual := invoke_builder_for_annotations(l_annotations, 'SOME_PACKAGE');
@@ -2124,11 +2126,12 @@ create or replace package body test_suite_builder is
     ut.expect(l_actual).to_be_like(
         '%<WARNINGS>' ||
         '%Annotation &quot;--%testcasesource&quot; cannot be used together with &quot;--%testcase&quot;. Annotation ignored.' ||
-        '%Annotation &quot;--%testcasesource&quot; requires a query. Annotation ignored.' ||
+        '%Annotation &quot;--%testcasesource&quot; requires the name of a function, e.g. &quot;--%testcasesource(get_test_cases)&quot;. Annotation ignored.' ||
         '%Annotation &quot;--%testcasesource&quot; can only be used with &quot;--%test&quot;. Annotation ignored.' ||
+        '%Annotation &quot;--%testcasesource&quot; requires the name of a function, e.g. &quot;--%testcasesource(get_test_cases)&quot;. Annotation ignored.' ||
         '%</WARNINGS>%'
     );
-    ut.expect(l_actual).not_to_be_like('%<CALL_SOURCE>select%');
+    ut.expect(l_actual).not_to_be_like('%<CALL_SOURCE>%');
   end;
 
   procedure create_test_case_args_package is
@@ -2179,6 +2182,41 @@ create or replace package body test_suite_builder is
     );
     ut.expect(l_actual).to_be_like('%<PATH>test_case_args.checked[7]</PATH>%');
     ut.expect(l_actual).not_to_be_like('%<PATH>test_case_args.checked[_]</PATH>%<PATH>test_case_args.checked[_]</PATH>%');
+  end;
+
+  procedure testcase_json_arguments is
+    l_actual      clob;
+    l_annotations ut3_develop.ut_annotations;
+  begin
+    --Arrange
+    l_annotations := ut3_develop.ut_annotations(
+        ut3_develop.ut_annotation(1, 'suite','Cool', null),
+        ut3_develop.ut_annotation(14, 'test','Half of {a_amount} is {a_half}', 'checked'),
+        ut3_develop.ut_annotation(15, 'testcase', '[2000, 1000]', 'checked'),
+        ut3_develop.ut_annotation(16, 'testcase', '{"a_half": 5, "a_amount": 10}', 'checked'),
+        ut3_develop.ut_annotation(17, 'testcase', '[1, 2, 3]', 'checked'),
+        ut3_develop.ut_annotation(18, 'testcase', '{"a_x": 1}', 'checked'),
+        ut3_develop.ut_annotation(19, 'testcase', '{"a_amount": 1}', 'checked'),
+        ut3_develop.ut_annotation(20, 'testcase', '[1, 2', 'checked')
+    );
+    --Act
+    l_actual := invoke_builder_for_annotations(l_annotations, 'TEST_CASE_ARGS');
+    --Assert
+    ut.expect(l_actual).to_be_like(
+        '%<NAME>checked[1]</NAME><DESCRIPTION>Half of {a_amount} is {a_half}</DESCRIPTION>%'
+    );
+    ut.expect(l_actual).to_be_like(
+        '%<NAME>checked[2]</NAME><DESCRIPTION>Half of 10 is 5</DESCRIPTION>%<CALL_ARGUMENTS>{&quot;a_half&quot;: 5, &quot;a_amount&quot;: 10}</CALL_ARGUMENTS>%'
+    );
+    ut.expect(l_actual).to_be_like(
+        '%<WARNINGS>' ||
+        '%has invalid arguments: 3 argument(s) given, but the procedure has 2 parameter(s). Annotation ignored.' ||
+        '%has invalid arguments: the procedure has no parameter A_X. Annotation ignored.' ||
+        '%has invalid arguments: no value for parameter(s) A_HALF. Annotation ignored.' ||
+        '%has invalid arguments: it is not valid JSON. Annotation ignored.' ||
+        '%</WARNINGS>%'
+    );
+    ut.expect(l_actual).not_to_be_like('%<PATH>test_case_args.checked[3]</PATH>%');
   end;
 
   procedure testcase_overloads is

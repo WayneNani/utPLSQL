@@ -199,10 +199,10 @@ create or replace package test_suite_builder is
       --%test(Gives warning when --%testcase is used without --%test)
       procedure testcase_without_test;
 
-      --%test(Stores the --%testcasesource query in the test)
+      --%test(Stores the --%testcasesource function in the test)
       procedure testcasesource_stores_query;
 
-      --%test(Gives warning when --%testcasesource is used with --%testcase, without a query or without --%test)
+      --%test(Gives warning when --%testcasesource is used with --%testcase, without a function name or without --%test)
       procedure testcasesource_invalid_use;
 
   --%endcontext
@@ -214,6 +214,9 @@ create or replace package test_suite_builder is
 
       --%test(Gives a warning for each test case with invalid arguments and skips it)
       procedure testcase_invalid_arguments;
+
+      --%test(Checks JSON test case arguments and fills in the description)
+      procedure testcase_json_arguments;
 
       --%test(Accepts arguments that fit one of the overloads, including an overload without parameters)
       procedure testcase_overloads;

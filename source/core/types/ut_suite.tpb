@@ -44,7 +44,7 @@ create or replace noneditionable type body ut_suite  as
       return false;
     end;
 
-    -- the queries run after beforeall, so they see the data that beforeall created
+    -- the --%testcasesource functions run after beforeall, so they see the data that beforeall created
     procedure execute_with_test_case_sources is
       l_items ut_suite_items := ut_suite_items();
       l_test  ut_test;
@@ -64,12 +64,12 @@ create or replace noneditionable type body ut_suite  as
             l_cases := l_test.get_source_test_cases();
           exception
             when others then
-              l_test.mark_as_errored('The --%testcasesource query failed.' || chr(10) || dbms_utility.format_error_stack);
+              l_test.mark_as_errored('The --%testcasesource function failed.' || chr(10) || dbms_utility.format_error_stack);
               add_item(l_test);
           end;
           if l_cases is not null then
             if l_cases.count = 0 then
-              self.put_warning('The --%testcasesource query returned no rows.', l_test.name, l_test.line_no);
+              self.put_warning('The --%testcasesource function returned no test cases.', l_test.name, l_test.line_no);
             end if;
             for j in 1 .. l_cases.count loop
               begin

@@ -17,7 +17,9 @@ create or replace noneditionable package body ut_test_case_values as
   */
 
   type tt_values is table of ut_anydata_list index by varchar2(4000 char);
+  type tt_json is table of clob index by varchar2(4000 char);
   g_values tt_values;
+  g_json   tt_json;
 
   procedure set_values(a_test_path varchar2, a_values ut_anydata_list) is
   begin
@@ -29,9 +31,20 @@ create or replace noneditionable package body ut_test_case_values as
     return case when g_values.exists(a_test_path) then g_values(a_test_path) end;
   end;
 
+  procedure set_json(a_test_path varchar2, a_json clob) is
+  begin
+    g_json(a_test_path) := a_json;
+  end;
+
+  function get_json(a_test_path varchar2) return clob is
+  begin
+    return case when g_json.exists(a_test_path) then g_json(a_test_path) end;
+  end;
+
   procedure remove_values(a_test_path varchar2) is
   begin
     g_values.delete(a_test_path);
+    g_json.delete(a_test_path);
   end;
 
 end;

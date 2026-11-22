@@ -466,13 +466,24 @@ create or replace noneditionable package body ut_suite_builder is
   ) is
     l_test     ut_test;
     l_position t_annotation_position := a_test_cases.first;
-    l_case_no  binary_integer := 0;
-    l_error    varchar2(4000 char);
+    l_case_no   binary_integer := 0;
+    l_error     varchar2(4000 char);
+    l_arguments varchar2(4000 char);
+    l_is_json   boolean;
   begin
     while l_position is not null loop
       -- cases are numbered by annotation, so that the number of a case does not change when another case is invalid
       l_case_no := l_case_no + 1;
-      l_error := get_arguments_error(a_annotations, a_test.name, trim(a_test_cases(l_position)));
+      l_arguments := trim(a_test_cases(l_position));
+      l_is_json := ut_test_case_json.is_json(l_arguments);
+      if l_is_json then
+        l_error := ut_test_case_json.get_json_error(l_arguments);
+        if l_error is null then
+          l_error := get_arguments_error(a_annotations, a_test.name, ut_test_case_json.get_arguments_text(l_arguments));
+        end if;
+      else
+        l_error := get_arguments_error(a_annotations, a_test.name, l_arguments);
+      end if;
       if l_error is not null then
         add_annotation_ignored_warning(
           a_suite, gc_testcase, 'Annotation %%% has invalid arguments: ' || l_error || '.', l_position, a_test.name
@@ -483,8 +494,12 @@ create or replace noneditionable package body ut_suite_builder is
         l_test.line_no := l_position;
         l_test.name := a_test.name || '[' || l_case_no || ']';
         l_test.path := a_test.path || '[' || l_case_no || ']';
-        l_test.item.call_arguments := trim(a_test_cases(l_position));
-        l_test.description := get_test_case_description(a_test.description, l_test.item.call_arguments);
+        l_test.item.call_arguments := l_arguments;
+        l_test.description :=
+          case
+            when l_is_json then ut_test_case_json.get_test_case_description(a_test.description, l_arguments)
+            else get_test_case_description(a_test.description, l_arguments)
+          end;
         a_suite_items.extend;
         a_suite_items(a_suite_items.last) := l_test;
       end if;
@@ -586,9 +601,12 @@ create or replace noneditionable package body ut_suite_builder is
         add_annotation_ignored_warning(
           a_suite, gc_testcasesource, 'Annotation %%% cannot be used together with "--%testcase".', l_annotation_texts.first, a_procedure_name
         );
-      elsif trim(l_annotation_texts(l_annotation_texts.first)) is null then
+      elsif not nvl(regexp_like(
+        trim(l_annotation_texts(l_annotation_texts.first)), '^[[:alpha:]][[:alnum:]_$#]*(\.[[:alpha:]][[:alnum:]_$#]*){0,2}$'
+      ), false) then
         add_annotation_ignored_warning(
-          a_suite, gc_testcasesource, 'Annotation %%% requires a query.', l_annotation_texts.first, a_procedure_name
+          a_suite, gc_testcasesource, 'Annotation %%% requires the name of a function, e.g. "--%testcasesource(get_test_cases)".',
+          l_annotation_texts.first, a_procedure_name
         );
       else
         l_test.item.call_source := trim(l_annotation_texts(l_annotation_texts.first));

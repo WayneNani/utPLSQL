@@ -372,35 +372,47 @@ create or replace package test_ut_run is
     --%throws(ut3_develop.ut_utils.gc_invalid_path_format)
     procedure run_test_case_suffix_on_package;
 
-    --%test(Runs one test case for each row of the --%testcasesource query, after beforeall)
+    --%test(Runs test cases given as JSON objects in --%testcase)
+    procedure run_test_case_json;
+
+    --%test(Runs one test case for each element of the JSON array returned by the --%testcasesource function, after beforeall)
     procedure run_test_case_source;
 
-    --%test(Passes object type values from the --%testcasesource query)
-    procedure run_test_case_source_object;
+    --%test(Runs one test case for each row of the cursor returned by the --%testcasesource function, with sysdate and constants)
+    procedure run_test_case_source_cursor;
 
-    --%test(Gives a warning when the --%testcasesource query returns no rows)
+    --%test(Passes values of a JSON array built with the PL/SQL JSON API, with sysdate and constants)
+    procedure run_test_case_source_built;
+
+    --%test(Gives a warning when the --%testcasesource function returns no test cases)
     procedure run_test_case_source_no_rows;
 
-    --%test(Reports the test as errored when the --%testcasesource query fails)
+    --%test(Reports the test as errored when the --%testcasesource function fails)
     procedure run_test_case_source_failing;
 
-    --%test(Does not run the --%testcasesource query of a disabled test)
+    --%test(Reports the test as errored when the --%testcasesource function doesn't exist)
+    procedure run_test_case_source_missing;
+
+    --%test(Does not call the --%testcasesource function of a disabled test)
     procedure run_test_case_source_disabled;
 
-    --%test(Passes the values read before the first test case even when the rows are gone)
+    --%test(Passes the cursor rows read before the first test case even when the rows are gone)
     procedure run_test_case_source_row_gone;
 
-    --%test(Passes values of different data types from the --%testcasesource query)
+    --%test(Converts JSON values to the data types of the parameters)
     procedure run_test_case_source_types;
 
-    --%test(Reports the test as errored when a column of the --%testcasesource query has an unsupported type)
+    --%test(Reports a JSON test case as errored when a parameter has a type that can't be passed from JSON)
     procedure run_test_case_source_bad_type;
+
+    --%test(Reports JSON test cases whose values don't fit the parameters as errored and runs the others)
+    procedure run_test_case_source_mismatch;
 
     --%test(Reports a test case as errored when its arguments don't fit the parameters, and continues the run)
     procedure run_test_case_wrong_type;
 
     $if dbms_db_version.version >= 23 $then
-    --%test(Passes BOOLEAN values from the --%testcasesource query)
+    --%test(Passes BOOLEAN values from the cursor of the --%testcasesource function)
     procedure run_test_case_source_boolean;
     $end
 

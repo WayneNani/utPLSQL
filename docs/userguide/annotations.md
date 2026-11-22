@@ -128,7 +128,7 @@ end;
 | `--%displayname( <description> )`                          | Package/procedure | Human-readable and meaningful description of a context/suite/test. Overrides the `<description>` provided with `suite`/`test`/`context` annotation. This annotation is redundant and might be removed in future releases.                                                                                                    |
 | `--%test( <description> )`                                 | Procedure         | Denotes that the annotated procedure is a unit test procedure.  Optional test description can be provided (see `displayname`).                                                                                                                                                                                               |
 | `--%testcase( <argument>[,...] )`                          | Procedure         | Runs the annotated `%test` procedure once per `%testcase` annotation, passing the arguments to the procedure. See [Testcase](#testcase).                                                                                                                                                                                    |
-| `--%testcasesource( <query> )`                             | Procedure         | Runs the annotated `%test` procedure once per row of the query, passing the columns to the procedure. See [Testcasesource](#testcasesource).                                                                                                                                                                               |
+| `--%testcasesource( <function> )`                          | Procedure         | Runs the annotated `%test` procedure once per test case returned by the function (JSON array or cursor). See [Testcasesource](#testcasesource).                                                                                                                                                                            |
 | `--%throws( <exception>[,...] )`                           | Procedure         | Denotes that the annotated test procedure must throw one of the exceptions provided. Supported forms of exceptions are: numeric literals, numeric constant names, exception constant names, predefined Oracle exception names.                                                                                               |
 | `--%beforeall`                                             | Procedure         | Denotes that the annotated procedure should be executed once before all elements of the suite.                                                                                                                                                                                                                               |
 | `--%beforeall( [[<owner>.]<package>.]<procedure>[( <arguments> )][,...] )`  | Package           | Denotes that the mentioned procedure(s) should be executed once before all elements of the suite.                                                                                                                                                                                                                            |
@@ -420,89 +420,163 @@ the number of arguments, the parameter names, parameters without default value a
 A test case with invalid arguments gives a warning and is skipped; the numbers of the other test cases don't change.
 Types are not checked, as PL/SQL converts many types implicitly. A wrong type shows up as an error when the test case runs.
 
+#### Test cases as JSON
+
+Instead of a PL/SQL argument list, a test case can be given as JSON:
+a JSON array passes its values by position, a JSON object passes its values to the parameters named like its keys (not case-sensitive).
+Parameters with default values can be omitted from a JSON object.
+
+```sql linenums="1"
+  --%test(Discount for {a_amount} EUR, VIP {a_vip} is {a_expected} percent)
+  --%testcase({"a_amount": 2000, "a_vip": true, "a_expected": 10})
+  --%testcase({"a_amount": 1000, "a_vip": true, "a_expected": 5})
+  procedure discount(a_amount number, a_vip boolean, a_expected number);
+```
+
+The JSON values are converted to the data types of the parameters when the test case runs; see [JSON values](#json-values).
+Unlike PL/SQL arguments, JSON values are literals: they can't use `sysdate`, constants or function calls.
+
 ### Testcasesource
 
-The `--%testcasesource` annotation runs a `--%test` procedure once for each row of a query.
-It suits test data that is easier to keep in a table, including complex data such as object types and collections.
+The `--%testcasesource` annotation runs a `--%test` procedure once for each test case returned by a function.
+It suits many test cases and complex data such as object types and collections, and keeps the test data next to the test.
 
-- The query runs when the suite runs, after its `--%beforeall` procedures, so it sees the data they create. Each test case is rolled back as usual.
-- Columns named like a parameter of the test procedure are passed to that parameter. Other columns are not passed, but can be used in the description.
-  If no column is named like a parameter, all columns are passed by position.
-- Each row becomes a separate test, named `<procedure>[1]`, `<procedure>[2]`, ... in the order the query returns the rows. Use `order by` to keep the numbers stable.
-- The query runs once, before the first test case. The values of all rows are read at that moment and kept in memory until their test case has run,
-  so changes to the source data in `--%beforeeach`, `--%beforetest` or earlier test cases don't affect the values of later test cases.
-  Keep the number of rows and the size of LOB values reasonable.
-- The columns can have these data types: `VARCHAR2`, `CHAR`, `NVARCHAR2`, `NCHAR`, `NUMBER`, `BINARY_FLOAT`, `BINARY_DOUBLE`, `DATE`, `TIMESTAMP` (also with (local) time zone),
-  `INTERVAL`, `CLOB`, `NCLOB`, `BLOB`, `RAW`, `BOOLEAN` (Oracle 23 and later) and object types and collections that are not owned by `SYS`.
-  The values keep their type, so no conversion to text and back takes place.
-  Other types, such as `XMLTYPE`, `JSON`, `LONG` or `ROWID`, make the test error with `ORA-20220`; convert them in the query, for example with `xmltype.getClobVal()`.
-- A disabled test doesn't run its query.
-- The description can refer to the values of a row with `{1}`, `{2}`, ... (column position) and `{<column name>}`.
-  Values of object types and collections are shown as `<TYPE_NAME>`. Without any placeholder, the values are appended to the description in brackets.
-- If the query fails, the test is reported as errored with the error of the query. If it returns no rows, the suite gets a warning.
+```sql linenums="1"
+  --%test(Half of {a_amount} is {a_half})
+  --%testcasesource(half_cases)
+  procedure half(a_amount number, a_half number);
+  function half_cases return json_array_t;
+```
+
+The function takes no arguments (or only arguments with default values) and returns either
+
+- a JSON array as `json_array_t`, `clob` or `varchar2`: each element is a test case, given as a JSON array or JSON object like the JSON of `--%testcase`, or
+- a `sys_refcursor`: each row is a test case. Columns named like a parameter of the test procedure are passed to that parameter;
+  other columns are not passed, but can be used in the description. If no column is named like a parameter, all columns are passed by position.
+
+The function is given by name: `half_cases` for a function in the test package, `<package>.<function>` or `<owner>.<package>.<function>` for a function elsewhere.
+
+- The function is called when the suite runs, after its `--%beforeall` procedures, so it sees the data they create. It is called once, and the test cases it returns are kept in memory
+  until they have run, so changes to the data in `--%beforeeach`, `--%beforetest` or earlier test cases don't affect later test cases.
+- Each test case becomes a separate test, named `<procedure>[1]`, `<procedure>[2]`, ... in the order the function returns them. Each test case is rolled back as usual.
+- The description can refer to the values of a test case with `{1}`, `{2}`, ... (position) and `{<name>}` (JSON key or column name).
+  Without any placeholder, the values are appended to the description in brackets.
+- If the function fails or doesn't exist, the test is reported as errored. If it returns no test cases (an empty array, `null` or no rows), the suite gets a warning.
+- A disabled test doesn't call its function.
 - `--%testcasesource` can't be combined with `--%testcase` on the same procedure.
-- Running a single row by path, for example `ut.run('test_bulk_discount.bulk_discount[2]')`, is not supported, as the rows are only known when the suite runs.
-- The query runs with the privileges of the user running the tests. Qualify the tables with the owner if the tests run from another schema.
-- Reporters that list all tests before the run, such as `ut_realtime_reporter`, list the test once, as its rows are not known yet.
+- Running a single test case by path, for example `ut.run('test_bulk_discount.bulk_discount[2]')`, is not supported, as the test cases are only known when the suite runs.
+- Reporters that list all tests before the run, such as `ut_realtime_reporter`, list the test once, as its test cases are not known yet.
+
+Cursor columns can have these data types: `VARCHAR2`, `CHAR`, `NVARCHAR2`, `NCHAR`, `NUMBER`, `BINARY_FLOAT`, `BINARY_DOUBLE`, `DATE`, `TIMESTAMP` (also with (local) time zone),
+`INTERVAL`, `CLOB`, `NCLOB`, `BLOB`, `RAW`, `BOOLEAN` (Oracle 23 and later) and object types and collections that are not owned by `SYS`.
+The values keep their type. Other types, such as `XMLTYPE`, make the test error with `ORA-20220`.
+
+A JSON array can be written as a literal, built with the PL/SQL JSON API or with SQL. The latter two, and cursors, can use `sysdate`, constants and data from tables:
 
 ```sql linenums="1"
 create or replace type order_line force as object (sku varchar2(20), qty number, unit_price number);
 /
 create or replace type order_lines force as table of order_line;
 /
-create table test_bulk_discount_cases (
-  label      varchar2(100),
-  a_lines    order_lines,
-  a_expected number
-) nested table a_lines store as test_bulk_discount_lines;
+create or replace package test_discounts as
+  --%suite(Discounts)
 
-create or replace package test_bulk_discount as
-  --%suite(Bulk discount)
-  --%beforeall(add_cases)
+  c_bulk_limit constant number := 5000;
 
-  procedure add_cases;
-
-  --%test(Bulk discount for {label} is {a_expected})
-  --%testcasesource(select label, a_lines, a_expected from test_bulk_discount_cases order by label)
+  --%test(Bulk discount is {2})
+  --%testcasesource(bulk_cases)
   procedure bulk_discount(a_lines order_lines, a_expected number);
+  function bulk_cases return json_array_t;
+
+  --%test(Delivery for an order of {label})
+  --%testcasesource(delivery_cases)
+  procedure delivery(a_order_date date, a_amount number, a_expected_date date);
+  function delivery_cases return sys_refcursor;
 end;
 /
-create or replace package body test_bulk_discount as
-  function discount(a_lines order_lines) return number is
+create or replace package body test_discounts as
+  function bulk_discount_pct(a_lines order_lines) return number is
     l_total number := 0;
   begin
     for i in 1 .. a_lines.count loop
       l_total := l_total + a_lines(i).qty * a_lines(i).unit_price;
     end loop;
-    return case when l_total >= 5000 then 0.03 else 0 end;
+    return case when l_total >= c_bulk_limit then 0.03 else 0 end;
   end;
 
-  procedure add_cases is
+  function delivery_date(a_order_date date, a_amount number) return date is
   begin
-    insert into test_bulk_discount_cases values ('a large order', order_lines(order_line('A', 20, 150), order_line('B', 10, 300)), 0.03);
-    insert into test_bulk_discount_cases values ('a small order', order_lines(order_line('A', 1, 100)), 0);
-    insert into test_bulk_discount_cases values ('an empty order', order_lines(), 0);
+    return trunc(a_order_date) + case when a_amount >= 100 then 1 else 3 end;
   end;
 
   procedure bulk_discount(a_lines order_lines, a_expected number) is
   begin
-    ut.expect(discount(a_lines)).to_equal(a_expected);
+    ut.expect(bulk_discount_pct(a_lines)).to_equal(a_expected);
+  end;
+
+  function bulk_cases return json_array_t is
+  begin
+    return json_array_t('[
+      [[{"sku": "A", "qty": 20, "unit_price": 150}, {"sku": "B", "qty": 10, "unit_price": 300}], 0.03],
+      [[{"sku": "A", "qty": 1, "unit_price": 100}], 0],
+      [[], 0]
+    ]');
+  end;
+
+  procedure delivery(a_order_date date, a_amount number, a_expected_date date) is
+  begin
+    ut.expect(delivery_date(a_order_date, a_amount)).to_equal(a_expected_date);
+  end;
+
+  function delivery_cases return sys_refcursor is
+    l_cases sys_refcursor;
+  begin
+    open l_cases for
+      select 'today, small' label, sysdate a_order_date, 50 a_amount, trunc(sysdate) + 3 a_expected_date from dual union all
+      select 'today, large', sysdate, 100, trunc(sysdate) + 1 from dual union all
+      select 'bulk limit', sysdate, c_bulk_limit, trunc(sysdate) + 1 from dual;
+    return l_cases;
   end;
 end;
 /
 ```
 ```sql linenums="1"
-exec ut.run('test_bulk_discount');
+exec ut.run('test_discounts');
 ```
 ```
-Bulk discount
-  Bulk discount for a large order is .03 [.014 sec]
-  Bulk discount for a small order is 0 [.008 sec]
-  Bulk discount for an empty order is 0 [.008 sec]
+Discounts
+  Bulk discount is 0.03 [.012 sec]
+  Bulk discount is 0 [.004 sec]
+  Bulk discount is 0 [.003 sec]
+  Delivery for an order of today, small [.006 sec]
+  Delivery for an order of today, large [.004 sec]
+  Delivery for an order of bulk limit [.003 sec]
  
-Finished in .068613 seconds
-3 tests, 0 failed, 0 errored, 0 disabled, 0 warning(s)
+Finished in .061937 seconds
+6 tests, 0 failed, 0 errored, 0 disabled, 0 warning(s)
 ```
+
+#### JSON values
+
+JSON values of `--%testcase` and `--%testcasesource` are converted to the data type of the parameter they are passed to:
+
+| Parameter type | JSON value |
+|---|---|
+| `NUMBER`, `BINARY_FLOAT`, `BINARY_DOUBLE`, `PLS_INTEGER` | number, e.g. `0.03` |
+| `VARCHAR2`, `CHAR`, `NVARCHAR2`, `NCHAR`, `CLOB`, `NCLOB` | string, e.g. `"VIP"` |
+| `BOOLEAN` | `true` or `false` |
+| `DATE`, `TIMESTAMP` | ISO 8601 string, e.g. `"2026-01-02"` or `"2026-01-02T10:11:12.5"`; `DATE` keeps the time |
+| `TIMESTAMP WITH (LOCAL) TIME ZONE` | ISO 8601 string, e.g. `"2026-01-02T10:11:12+02:00"` |
+| `INTERVAL DAY TO SECOND`, `INTERVAL YEAR TO MONTH` | ISO 8601 duration or Oracle interval string, e.g. `"P1DT2H"` or `"1 02:00:00"` |
+| `RAW` | hexadecimal string, e.g. `"0AFF"` |
+| object type | JSON object with all attributes as keys, e.g. `{"sku": "A", "qty": 1, "unit_price": 100}` |
+| collection | JSON array, e.g. `[1, 2, 3]` |
+
+- `null` passes `NULL` for every type.
+- A value that can't be converted, for example `"abc"` for a `NUMBER`, or an object with a missing or unknown attribute, makes that test case error; the other test cases run.
+- Other parameter types, such as `BLOB`, `XMLTYPE`, records and PL/SQL collections, can't be passed from JSON; such test cases error with `ORA-20220`.
+- JSON test cases can't be used with overloaded test procedures.
+- `json_object_t.put` writes `DATE` and `TIMESTAMP` values in the ISO 8601 format, so JSON built with the PL/SQL JSON API converts back without loss.
 
 ### Disabled
 Marks annotated suite package or test procedure as disabled.

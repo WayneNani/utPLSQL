@@ -1774,12 +1774,19 @@ procedure tag_exclude_run_fun_pth_lst_lg is
     $if dbms_db_version.version >= 23 $then
     l_boolean_spec := q'~
       --%test(Flag {a_flag} is {a_label})
-      --%testcasesource(select true a_flag, 'yes' a_label from dual union all select false, 'no' from dual)
-      procedure boolean_values(a_flag boolean, a_label varchar2);~';
+      --%testcasesource(get_boolean_cursor)
+      procedure boolean_values(a_flag boolean, a_label varchar2);
+      function get_boolean_cursor return sys_refcursor;~';
     l_boolean_body := q'~
       procedure boolean_values(a_flag boolean, a_label varchar2) is
       begin
         ut3_develop.ut.expect(case when a_flag then 'yes' when not a_flag then 'no' end).to_equal(a_label);
+      end;
+      function get_boolean_cursor return sys_refcursor is
+        l_cursor sys_refcursor;
+      begin
+        open l_cursor for select true a_flag, 'yes' a_label from dual union all select false, 'no' from dual;
+        return l_cursor;
       end;~';
     $end
     execute immediate 'create or replace type test_case_pair force as object (amount number, half number)';
@@ -1791,6 +1798,7 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       --%beforeall(fill_test_case_rows)
 
       g_log varchar2(4000);
+      c_limit constant number := 100;
 
       procedure start_log(a_text varchar2);
       procedure log_call(a_text varchar2, a_number number);
@@ -1807,55 +1815,84 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       --%aftertest(log_call('after', 3))
       procedure before_after_args;
 
+      --%test(JSON half of {a_amount} is {a_half})
+      --%testcase({"a_amount": 4, "a_half": 2})
+      --%testcase({"a_half": 5, "a_amount": 10})
+      --%testcase({"a_amount": 3, "a_half": 2})
+      procedure json_half(a_amount number, a_half number);
+
       --%test(Half of {a_amount} from table is {a_half})
-      --%testcasesource(select a_amount, a_half from test_case_rows order by a_amount)
+      --%testcasesource(get_rows_json)
       procedure half_from_table(a_amount number, a_half number);
+      function get_rows_json return clob;
 
-      --%test(Half of a pair)
-      --%testcasesource(select test_case_pair(8, 4) a_pair from dual)
-      procedure pair_half(a_pair test_case_pair);
+      --%test(Values of different types)
+      --%testcasesource(get_typed_json)
+      procedure typed_values(
+        a_text varchar2, a_day date, a_moment timestamp, a_note clob, a_bytes raw, a_period interval day to second,
+        a_numbers test_case_numbers, a_pair test_case_pair, a_flag boolean, a_nothing number
+      );
+      function get_typed_json return json_array_t;
 
-      --%test(Source without rows)
-      --%testcasesource(select 1 a_value from dual where 1 = 0)
+      --%test(Cursor case {label})
+      --%testcasesource(get_cursor_cases)
+      procedure cursor_values(a_day date, a_limit number, a_pair test_case_pair);
+      function get_cursor_cases return sys_refcursor;
+
+      --%test(JSON built in PL/SQL)
+      --%testcasesource(get_built_json)
+      procedure built_values(a_day date, a_limit number);
+      function get_built_json return json_array_t;
+
+      --%test(Source without test cases)
+      --%testcasesource(get_no_cases)
       procedure no_rows(a_value number);
+      function get_no_cases return clob;
 
       --%test(Source that fails)
-      --%testcasesource(select a_value from table_that_does_not_exist)
+      --%testcasesource(get_failing_cases)
       procedure broken_source(a_value number);
+      function get_failing_cases return sys_refcursor;
+
+      --%test(Source that doesn't exist)
+      --%testcasesource(get_nothing)
+      procedure missing_source(a_value number);
 
       --%test(Disabled source)
       --%disabled
-      --%testcasesource(select a_value from table_that_does_not_exist)
+      --%testcasesource(get_failing_cases)
       procedure disabled_source(a_value number);
 
       --%test(Row that is deleted before the test case runs)
-      --%testcasesource(select a_amount, a_half from test_case_rows order by a_amount)
+      --%testcasesource(get_rows_cursor)
       --%beforetest(delete_test_case_rows)
       procedure vanishing_row(a_amount number, a_half number);
       procedure delete_test_case_rows;
+      function get_rows_cursor return sys_refcursor;
 
       --%test
-      --%testcasesource(select 1 a_value from dual)
+      --%testcasesource(get_one_case)
       procedure no_description(a_value number);
+      function get_one_case return clob;
 
-      --%test(Values of different types)
-      --%testcasesource(select 'x''y' a_text, date '2026-01-02' a_day, timestamp '2026-01-02 03:04:05.6' a_moment, to_clob('long') a_note, hextoraw('0AFF') a_bytes, interval '1 02:03:04' day to second a_period, test_case_numbers(1, 2, 3) a_numbers, cast(null as number) a_nothing from dual)
-      procedure typed_values(
-        a_text varchar2, a_day date, a_moment timestamp, a_note clob, a_bytes raw,
-        a_period interval day to second, a_numbers test_case_numbers, a_nothing number
-      );
-
-      --%test(Value of a type that can't be passed)
-      --%testcasesource(select xmltype('<a/>') a_xml from dual)
+      --%test(Value of a type that can't be passed from JSON)
+      --%testcasesource(get_xml_case)
       procedure xml_value(a_xml xmltype);
+      function get_xml_case return clob;
+
+      --%test(Values that don't fit the parameters)
+      --%testcasesource(get_mismatching_cases)
+      procedure mismatching_values(a_amount number, a_pair test_case_pair);
+      function get_mismatching_cases return clob;
 
       --%test(Argument that doesn't fit the parameter)
       --%testcase(1)
       procedure wrong_argument_type(a_pair test_case_pair);
 
       --%test(Column that doesn't fit the parameter)
-      --%testcasesource(select 1 a_pair from dual)
-      procedure wrong_column_type(a_pair test_case_pair);~' || l_boolean_spec || q'~
+      --%testcasesource(get_wrong_column)
+      procedure wrong_column_type(a_pair test_case_pair);
+      function get_wrong_column return sys_refcursor;~' || l_boolean_spec || q'~
     end;~';
     execute immediate q'~create or replace package body test_cases_in_ut3_user is
       procedure start_log(a_text varchar2) is
@@ -1880,19 +1917,94 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       begin
         ut3_develop.ut.expect(g_log).to_equal('[all][a, b:1][x):2]');
       end;
+      procedure json_half(a_amount number, a_half number) is
+      begin
+        ut3_develop.ut.expect(a_amount / 2).to_equal(a_half);
+      end;
       procedure half_from_table(a_amount number, a_half number) is
       begin
         ut3_develop.ut.expect(a_amount / 2).to_equal(a_half);
       end;
-      procedure pair_half(a_pair test_case_pair) is
+      function get_rows_json return clob is
+        l_json clob;
       begin
+        select json_arrayagg(json_object('a_amount' value a_amount, 'a_half' value a_half) order by a_amount returning clob)
+          into l_json
+          from test_case_rows;
+        return l_json;
+      end;
+      procedure typed_values(
+        a_text varchar2, a_day date, a_moment timestamp, a_note clob, a_bytes raw, a_period interval day to second,
+        a_numbers test_case_numbers, a_pair test_case_pair, a_flag boolean, a_nothing number
+      ) is
+      begin
+        ut3_develop.ut.expect(a_text).to_equal('x''y');
+        ut3_develop.ut.expect(a_day).to_equal(to_date('2026-01-02 10:11:12', 'yyyy-mm-dd hh24:mi:ss'));
+        ut3_develop.ut.expect(a_moment).to_equal(timestamp '2026-01-02 03:04:05.6');
+        ut3_develop.ut.expect(a_note).to_equal(to_clob('long'));
+        ut3_develop.ut.expect(rawtohex(a_bytes)).to_equal('0AFF');
+        ut3_develop.ut.expect(a_period).to_equal(interval '1 02:03:04' day to second);
+        ut3_develop.ut.expect(a_numbers.count).to_equal(3);
+        ut3_develop.ut.expect(a_pair.half).to_equal(4);
+        ut3_develop.ut.expect(a_flag).to_be_true();
+        ut3_develop.ut.expect(a_nothing).to_be_null();
+      end;
+      function get_typed_json return json_array_t is
+      begin
+        return json_array_t(
+          '[["x''y", "2026-01-02T10:11:12", "2026-01-02T03:04:05.6", "long", "0AFF", "P1DT2H3M4S",' ||
+          ' [1, 2, 3], {"amount": 8, "half": 4}, true, null]]'
+        );
+      end;
+      procedure cursor_values(a_day date, a_limit number, a_pair test_case_pair) is
+      begin
+        ut3_develop.ut.expect(a_day).to_be_between(trunc(sysdate), trunc(sysdate) + 1);
+        ut3_develop.ut.expect(a_limit).to_be_greater_or_equal(c_limit);
         ut3_develop.ut.expect(a_pair.amount / 2).to_equal(a_pair.half);
+      end;
+      function get_cursor_cases return sys_refcursor is
+        l_cursor sys_refcursor;
+      begin
+        open l_cursor for
+          select 'today' label, trunc(sysdate) a_day, c_limit a_limit, test_case_pair(8, 4) a_pair from dual
+          union all
+          select 'tomorrow', trunc(sysdate) + 1, c_limit * 2, test_case_pair(6, 3) from dual
+          order by 1;
+        return l_cursor;
+      end;
+      procedure built_values(a_day date, a_limit number) is
+      begin
+        ut3_develop.ut.expect(a_day).to_equal(trunc(sysdate));
+        ut3_develop.ut.expect(a_limit).to_equal(c_limit);
+      end;
+      function get_built_json return json_array_t is
+        l_cases json_array_t := json_array_t();
+        l_case  json_object_t := json_object_t();
+      begin
+        l_case.put('a_day', trunc(sysdate));
+        l_case.put('a_limit', c_limit);
+        l_cases.append(l_case);
+        return l_cases;
       end;
       procedure no_rows(a_value number) is
       begin
         null;
       end;
+      function get_no_cases return clob is
+      begin
+        return '[]';
+      end;
       procedure broken_source(a_value number) is
+      begin
+        null;
+      end;
+      function get_failing_cases return sys_refcursor is
+        l_cursor sys_refcursor;
+      begin
+        open l_cursor for 'select a_value from table_that_does_not_exist';
+        return l_cursor;
+      end;
+      procedure missing_source(a_value number) is
       begin
         null;
       end;
@@ -1909,28 +2021,35 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       begin
         delete from test_case_rows;
       end;
+      function get_rows_cursor return sys_refcursor is
+        l_cursor sys_refcursor;
+      begin
+        open l_cursor for select a_amount, a_half from test_case_rows order by a_amount;
+        return l_cursor;
+      end;
       procedure no_description(a_value number) is
       begin
         null;
       end;
-      procedure typed_values(
-        a_text varchar2, a_day date, a_moment timestamp, a_note clob, a_bytes raw,
-        a_period interval day to second, a_numbers test_case_numbers, a_nothing number
-      ) is
+      function get_one_case return clob is
       begin
-        ut3_develop.ut.expect(a_text).to_equal('x''y');
-        ut3_develop.ut.expect(a_day).to_equal(date '2026-01-02');
-        ut3_develop.ut.expect(a_moment).to_equal(timestamp '2026-01-02 03:04:05.6');
-        ut3_develop.ut.expect(a_note).to_equal(to_clob('long'));
-        ut3_develop.ut.expect(rawtohex(a_bytes)).to_equal('0AFF');
-        ut3_develop.ut.expect(a_period).to_equal(interval '1 02:03:04' day to second);
-        ut3_develop.ut.expect(a_numbers.count).to_equal(3);
-        ut3_develop.ut.expect(a_numbers(3)).to_equal(3);
-        ut3_develop.ut.expect(a_nothing).to_be_null();
+        return '[[1]]';
       end;
       procedure xml_value(a_xml xmltype) is
       begin
         null;
+      end;
+      function get_xml_case return clob is
+      begin
+        return '[["<a/>"]]';
+      end;
+      procedure mismatching_values(a_amount number, a_pair test_case_pair) is
+      begin
+        null;
+      end;
+      function get_mismatching_cases return clob is
+      begin
+        return '[[1, {"amount": 8, "half": 4}], ["abc", {"amount": 8, "half": 4}], [1, {"amount": 8, "halfx": 4}], {"a_x": 1}]';
       end;
       procedure wrong_argument_type(a_pair test_case_pair) is
       begin
@@ -1939,6 +2058,12 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       procedure wrong_column_type(a_pair test_case_pair) is
       begin
         null;
+      end;
+      function get_wrong_column return sys_refcursor is
+        l_cursor sys_refcursor;
+      begin
+        open l_cursor for select 1 a_pair from dual;
+        return l_cursor;
       end;~' || l_boolean_body || q'~
     end;~';
   end;
@@ -1952,61 +2077,42 @@ procedure tag_exclude_run_fun_pth_lst_lg is
     execute immediate 'drop type test_case_numbers';
   end;
 
-  procedure run_test_cases is
+  function run_and_report(a_path varchar2) return clob is
     l_results ut3_develop.ut_varchar2_list;
-    l_actual  clob;
   begin
-    --Act
-    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user'));
-    l_actual := ut3_tester_helper.main_helper.table_to_clob(l_results);
-    --Assert
-    ut.expect(l_actual).to_be_like(
+    select * bulk collect into l_results from table(ut3_develop.ut.run(a_path));
+    return ut3_tester_helper.main_helper.table_to_clob(l_results);
+  end;
+
+  procedure run_test_cases is
+  begin
+    ut.expect(run_and_report('test_cases_in_ut3_user')).to_be_like(
       '%Half of 2000 is 1000 [%' ||
       '%Half of 10 is 5 [%' ||
       '%Half of 1 is 1 [% (FAILED - 1)%' ||
-      '%Half of 3 from table is 2 [% (FAILED - 2)%' ||
+      '%Half of 3 from table is 2 [% (FAILED - 3)%' ||
       '%Half of 4 from table is 2 [%' ||
       '%Half of 10 from table is 5 [%' ||
-      '%Half of a pair (<%TEST_CASE_PAIR>) [%' ||
-      '% tests, 2 failed, 4 errored, 1 disabled%'
+      '% tests, 3 failed, 8 errored, 1 disabled%'
     );
   end;
 
   procedure run_test_cases_by_path is
-    l_results ut3_develop.ut_varchar2_list;
-    l_actual  clob;
   begin
-    --Act
-    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.half'));
-    l_actual := ut3_tester_helper.main_helper.table_to_clob(l_results);
-    --Assert
-    ut.expect(l_actual).to_be_like('%3 tests, 1 failed, 0 errored%');
+    ut.expect(run_and_report('test_cases_in_ut3_user.half')).to_be_like('%3 tests, 1 failed, 0 errored%');
   end;
 
   procedure run_before_after_with_args is
-    l_results ut3_develop.ut_varchar2_list;
-    l_actual  clob;
   begin
-    --Act
-    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.before_after_args'));
-    l_actual := ut3_tester_helper.main_helper.table_to_clob(l_results);
-    --Assert
-    ut.expect(l_actual).to_be_like('%1 tests, 0 failed, 0 errored%');
+    ut.expect(run_and_report('test_cases_in_ut3_user.before_after_args')).to_be_like('%1 tests, 0 failed, 0 errored%');
   end;
 
   procedure run_single_test_case is
-    l_results ut3_develop.ut_varchar2_list;
   begin
-    --Act
-    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.half[3]'));
-    --Assert
-    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like('%Half of 1 is 1 [%1 tests, 1 failed, 0 errored%');
-
-    select * bulk collect into l_results from table(ut3_develop.ut.run(':test_cases_in_ut3_user.half[2]'));
-    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like('%Half of 10 is 5 [%1 tests, 0 failed, 0 errored%');
-
-    select * bulk collect into l_results from table(ut3_develop.ut.run(':test_cases_in_ut3_user.half'));
-    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like('%3 tests, 1 failed, 0 errored%');
+    ut.expect(run_and_report('test_cases_in_ut3_user.half[3]')).to_be_like('%Half of 1 is 1 [%1 tests, 1 failed, 0 errored%');
+    ut.expect(run_and_report(':test_cases_in_ut3_user.half[2]')).to_be_like('%Half of 10 is 5 [%1 tests, 0 failed, 0 errored%');
+    ut.expect(run_and_report(':test_cases_in_ut3_user.half')).to_be_like('%3 tests, 1 failed, 0 errored%');
+    ut.expect(run_and_report('test_cases_in_ut3_user.json_half[2]')).to_be_like('%JSON half of 10 is 5 [%1 tests, 0 failed, 0 errored%');
   end;
 
   procedure run_test_case_suffix_on_package is
@@ -2015,78 +2121,85 @@ procedure tag_exclude_run_fun_pth_lst_lg is
     select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user[2]'));
   end;
 
-  procedure run_test_case_source is
-    l_results ut3_develop.ut_varchar2_list;
+  procedure run_test_case_json is
   begin
-    --Act
-    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.half_from_table'));
-    --Assert
-    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
+    ut.expect(run_and_report('test_cases_in_ut3_user.json_half')).to_be_like(
+      '%JSON half of 4 is 2 [%JSON half of 10 is 5 [%JSON half of 3 is 2 [% (FAILED - 1)%3 tests, 1 failed, 0 errored%'
+    );
+  end;
+
+  procedure run_test_case_source is
+  begin
+    ut.expect(run_and_report('test_cases_in_ut3_user.half_from_table')).to_be_like(
       '%Half of 3 from table is 2 [% (FAILED - 1)%Half of 4 from table is 2 [%Half of 10 from table is 5 [%' ||
       '%1) half_from_table[1]%3 tests, 1 failed, 0 errored%'
     );
   end;
 
-  procedure run_test_case_source_no_rows is
-    l_results ut3_develop.ut_varchar2_list;
+  procedure run_test_case_source_cursor is
   begin
-    --Act
-    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.no_rows'));
-    --Assert
-    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
-      '%The --%testcasesource query returned no rows.%0 tests, 0 failed, 0 errored, 0 disabled, 1 warning(s)%'
+    ut.expect(run_and_report('test_cases_in_ut3_user.cursor_values')).to_be_like(
+      '%Cursor case today [%Cursor case tomorrow [%2 tests, 0 failed, 0 errored%'
+    );
+  end;
+
+  procedure run_test_case_source_built is
+  begin
+    ut.expect(run_and_report('test_cases_in_ut3_user.built_values')).to_be_like('%1 tests, 0 failed, 0 errored%');
+  end;
+
+  procedure run_test_case_source_no_rows is
+  begin
+    ut.expect(run_and_report('test_cases_in_ut3_user.no_rows')).to_be_like(
+      '%The --%testcasesource function returned no test cases.%0 tests, 0 failed, 0 errored, 0 disabled, 1 warning(s)%'
     );
   end;
 
   procedure run_test_case_source_failing is
-    l_results ut3_develop.ut_varchar2_list;
   begin
-    --Act
-    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.broken_source'));
-    --Assert
-    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
-      '%The --%testcasesource query failed.%ORA-00942%1 tests, 0 failed, 1 errored%'
+    ut.expect(run_and_report('test_cases_in_ut3_user.broken_source')).to_be_like(
+      '%The --%testcasesource function failed.%ORA-00942%1 tests, 0 failed, 1 errored%'
+    );
+  end;
+
+  procedure run_test_case_source_missing is
+  begin
+    ut.expect(run_and_report('test_cases_in_ut3_user.missing_source')).to_be_like(
+      '%The --%testcasesource function failed.%ORA-20220: The --%testcasesource function get_nothing doesn''t exist ' ||
+      'or can''t be called without arguments.%1 tests, 0 failed, 1 errored%'
     );
   end;
 
   procedure run_test_case_source_disabled is
-    l_results ut3_develop.ut_varchar2_list;
   begin
-    --Act
-    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.disabled_source'));
-    --Assert
-    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like('%1 tests, 0 failed, 0 errored, 1 disabled%');
+    ut.expect(run_and_report('test_cases_in_ut3_user.disabled_source')).to_be_like('%1 tests, 0 failed, 0 errored, 1 disabled%');
   end;
 
   procedure run_test_case_source_row_gone is
-    l_results ut3_develop.ut_varchar2_list;
   begin
-    --Act
-    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.vanishing_row'));
-    --Assert
-    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like('%3 tests, 0 failed, 0 errored%');
+    ut.expect(run_and_report('test_cases_in_ut3_user.vanishing_row')).to_be_like('%3 tests, 0 failed, 0 errored%');
   end;
 
   procedure run_test_case_source_types is
-    l_results ut3_develop.ut_varchar2_list;
   begin
-    --Act
-    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.typed_values'));
-    --Assert
-    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
-      '%Values of different types (x''y, %, long, 0AFF, %, <%TEST_CASE_NUMBERS>, null) [%1 tests, 0 failed, 0 errored%'
+    ut.expect(run_and_report('test_cases_in_ut3_user.typed_values')).to_be_like(
+      '%Values of different types (x''y, 2026-01-02T10:11:12, %, long, 0AFF, P1DT2H3M4S, [1,2,3], {"amount":8,"half":4}, true, null) [%' ||
+      '1 tests, 0 failed, 0 errored%'
     );
   end;
 
   procedure run_test_case_source_bad_type is
-    l_results ut3_develop.ut_varchar2_list;
   begin
-    --Act
-    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.xml_value'));
-    --Assert
-    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
-      '%The --%testcasesource query failed.%ORA-20220: Column A_XML of the --%testcasesource query has a data type ' ||
-      'that can''t be passed to the test: XMLTYPE%1 tests, 0 failed, 1 errored%'
+    ut.expect(run_and_report('test_cases_in_ut3_user.xml_value')).to_be_like(
+      '%Invalid JSON test case: parameter A_XML has a data type that can''t be passed from JSON: XMLTYPE.%1 tests, 0 failed, 1 errored%'
+    );
+  end;
+
+  procedure run_test_case_source_mismatch is
+  begin
+    ut.expect(run_and_report('test_cases_in_ut3_user.mismatching_values')).to_be_like(
+      '%mismatching_values[2]%ORA-01722%mismatching_values[3]%ORA-40601%' ||
+      'mismatching_values[4]%Invalid JSON test case: the procedure has no parameter a_x.%4 tests, 0 failed, 3 errored%'
     );
   end;
 
@@ -2106,33 +2219,16 @@ procedure tag_exclude_run_fun_pth_lst_lg is
 
   $if dbms_db_version.version >= 23 $then
   procedure run_test_case_source_boolean is
-    l_results ut3_develop.ut_varchar2_list;
   begin
-    --Act
-    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.boolean_values'));
-    --Assert
-    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
+    ut.expect(run_and_report('test_cases_in_ut3_user.boolean_values')).to_be_like(
       '%Flag true is yes [%Flag false is no [%2 tests, 0 failed, 0 errored%'
     );
   end;
   $end
 
   procedure run_test_case_source_no_descr is
-    l_results ut3_develop.ut_varchar2_list;
   begin
-    --Act
-    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.no_description'));
-    --Assert
-    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like('%no_description[1] [%1 tests, 0 failed, 0 errored%');
-  end;
-
-  procedure run_test_case_source_object is
-    l_results ut3_develop.ut_varchar2_list;
-  begin
-    --Act
-    select * bulk collect into l_results from table(ut3_develop.ut.run('test_cases_in_ut3_user.pair_half'));
-    --Assert
-    ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like('%1 tests, 0 failed, 0 errored%');
+    ut.expect(run_and_report('test_cases_in_ut3_user.no_description')).to_be_like('%no_description[1] [%1 tests, 0 failed, 0 errored%');
   end;
 
   procedure report_test_case_names is

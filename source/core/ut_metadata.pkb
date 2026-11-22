@@ -78,7 +78,8 @@ create or replace noneditionable package body ut_metadata as
   begin
     -- the outer join keeps procedures without parameters, which have no entries in dba_arguments
     execute immediate
-      'select /*+ no_parallel */ p.procedure_name, nvl(p.overload, ''0''), a.argument_name, a.defaulted' ||
+      'select /*+ no_parallel */ p.procedure_name, nvl(p.overload, ''0''), a.argument_name, a.defaulted,' ||
+      '       a.data_type, a.type_owner, a.type_name, a.type_subname' ||
       '  from ' || l_procedures || ' p' ||
       '  left join ' || l_arguments || ' a' ||
       '    on a.owner = p.owner and a.package_name = p.object_name and a.object_name = p.procedure_name' ||
@@ -88,6 +89,31 @@ create or replace noneditionable package body ut_metadata as
       ' order by p.procedure_name, p.overload, a.position'
       bulk collect into l_result using a_owner_name, a_package_name, a_procedure_name, a_procedure_name;
     return l_result;
+  end;
+
+  function get_function_return_type(
+    a_owner_name varchar2, a_package_name varchar2, a_function_name varchar2
+  ) return t_parameter is
+    l_result    t_parameter;
+    l_view_name varchar2(200 char) := get_dba_view('dba_arguments');
+  begin
+    execute immediate
+      'select /*+ no_parallel */ r.object_name, nvl(r.overload, ''0''), null, null, r.data_type, r.type_owner, r.type_name, r.type_subname' ||
+      '  from ' || l_view_name || ' r' ||
+      ' where r.owner = :a_owner_name and r.package_name = :a_package_name and r.object_name = :a_function_name' ||
+      '   and r.position = 0 and r.data_level = 0' ||
+      '   and not exists (' ||
+      '         select 1 from ' || l_view_name || ' a' ||
+      '          where a.owner = r.owner and a.package_name = r.package_name and a.object_name = r.object_name' ||
+      '            and nvl(a.overload, ''0'') = nvl(r.overload, ''0'') and a.position > 0 and a.data_level = 0' ||
+      '            and a.defaulted = ''N''' ||
+      '       )' ||
+      ' order by r.overload fetch first 1 row only'
+      into l_result using a_owner_name, a_package_name, a_function_name;
+    return l_result;
+  exception
+    when no_data_found then
+      return l_result;
   end;
 
   function get_source_definition_line(a_owner varchar2, a_object_name varchar2, a_line_no integer) return varchar2 is

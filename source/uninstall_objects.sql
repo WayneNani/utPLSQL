@@ -272,6 +272,8 @@ drop package ut_metadata;
 
 drop package ut_test_case_values;
 
+drop package ut_test_case_json;
+
 drop package ut_ansiconsole_helper;
 
 begin
