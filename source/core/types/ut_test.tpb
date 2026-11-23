@@ -211,10 +211,19 @@ create or replace noneditionable type body ut_test as
 
     -- each element of the array is a test case; its JSON text is converted to the parameter types when the test case runs
     procedure add_json_test_cases(a_is_json_array_t boolean) is
-      l_json    clob;
-      l_element json_element_t;
-      l_array   json_array_t;
+      l_json       clob;
+      l_element    json_element_t;
+      l_array      json_array_t;
+      l_parameters ut_metadata.tt_parameters :=
+        ut_metadata.get_package_parameters(upper(self.item.owner_name), upper(self.item.object_name), upper(self.item.procedure_name));
+      l_names      ut_varchar2_list := ut_varchar2_list();
     begin
+      for i in 1 .. l_parameters.count loop
+        if l_parameters(i).overload = l_parameters(1).overload and l_parameters(i).parameter_name is not null then
+          l_names.extend;
+          l_names(l_names.last) := l_parameters(i).parameter_name;
+        end if;
+      end loop;
       execute immediate
         'begin :ut_json := ' || l_function_call || case when a_is_json_array_t then '.to_clob()' end || '; end;'
         using out l_json;
@@ -234,7 +243,7 @@ create or replace noneditionable type body ut_test as
         end if;
         l_json := l_element.to_clob;
         ut_test_case_values.set_json(
-          add_test_case(i + 1, ut_test_case_json.get_test_case_description(self.description, l_json)), l_json
+          add_test_case(i + 1, ut_test_case_json.get_test_case_description(self.description, l_json, l_names)), l_json
         );
       end loop;
     end;

@@ -1892,7 +1892,27 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       --%test(Column that doesn't fit the parameter)
       --%testcasesource(get_wrong_column)
       procedure wrong_column_type(a_pair test_case_pair);
-      function get_wrong_column return sys_refcursor;~' || l_boolean_spec || q'~
+      function get_wrong_column return sys_refcursor;
+
+      type t_line is record (sku varchar2(10), qty pls_integer, price number(10,2), shipped boolean, ship_date date, pair test_case_pair);
+      type t_lines is table of t_line;
+      type t_lines_by_no is table of t_line index by pls_integer;
+      type t_rates is table of number index by varchar2(10);
+      type t_order is record (id number, lines t_lines, rates t_rates, by_no t_lines_by_no, tags test_case_numbers);
+
+      --%test(Nested PL/SQL record)
+      --%testcase({"a_order": {"id": 1, "lines": [{"sku": "A", "qty": 2, "price": 9.99, "shipped": true, "ship_date": "2026-01-02T10:00:00", "pair": {"amount": 8, "half": 4}}], "rates": {"DE": 19, "AT": 20}, "by_no": {"5": {"sku": "B", "qty": 1}}, "tags": [1, 2]}})
+      procedure plsql_record(a_order t_order);
+
+      --%test(Associative arrays with {a_expected} elements)
+      --%testcasesource(get_plsql_cases)
+      procedure plsql_collections(a_rates t_rates, a_lines t_lines_by_no, a_expected number);
+      function get_plsql_cases return json_array_t;
+
+      --%test(Invalid PL/SQL values)
+      --%testcasesource(get_invalid_plsql_cases)
+      procedure plsql_invalid(a_order t_order);
+      function get_invalid_plsql_cases return clob;~' || l_boolean_spec || q'~
     end;~';
     execute immediate q'~create or replace package body test_cases_in_ut3_user is
       procedure start_log(a_text varchar2) is
@@ -2064,6 +2084,49 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       begin
         open l_cursor for select 1 a_pair from dual;
         return l_cursor;
+      end;
+      procedure plsql_record(a_order t_order) is
+      begin
+        ut3_develop.ut.expect(a_order.id).to_equal(1);
+        ut3_develop.ut.expect(a_order.lines.count).to_equal(1);
+        ut3_develop.ut.expect(a_order.lines(1).sku).to_equal('A');
+        ut3_develop.ut.expect(a_order.lines(1).qty).to_equal(2);
+        ut3_develop.ut.expect(a_order.lines(1).price).to_equal(9.99);
+        ut3_develop.ut.expect(a_order.lines(1).shipped).to_be_true();
+        ut3_develop.ut.expect(a_order.lines(1).ship_date).to_equal(to_date('2026-01-02 10:00:00', 'yyyy-mm-dd hh24:mi:ss'));
+        ut3_develop.ut.expect(a_order.lines(1).pair.half).to_equal(4);
+        ut3_develop.ut.expect(a_order.rates.count).to_equal(2);
+        ut3_develop.ut.expect(a_order.rates('DE')).to_equal(19);
+        ut3_develop.ut.expect(a_order.by_no.first).to_equal(5);
+        ut3_develop.ut.expect(a_order.by_no(5).sku).to_equal('B');
+        ut3_develop.ut.expect(a_order.by_no(5).shipped).to_be_null();
+        ut3_develop.ut.expect(a_order.tags.count).to_equal(2);
+      end;
+      procedure plsql_collections(a_rates t_rates, a_lines t_lines_by_no, a_expected number) is
+      begin
+        ut3_develop.ut.expect(a_rates.count + a_lines.count).to_equal(a_expected);
+        if a_lines.count > 0 then
+          ut3_develop.ut.expect(a_lines.first).to_be_less_than(a_lines.last);
+        end if;
+      end;
+      function get_plsql_cases return json_array_t is
+      begin
+        return json_array_t(
+          '[[{"DE": 19}, [{"sku": "A"}, {"sku": "B"}], 3],' ||
+          ' {"a_rates": {}, "a_lines": {"-1": {"sku": "X"}, "10": {"sku": "Y"}}, "a_expected": 2}]'
+        );
+      end;
+      procedure plsql_invalid(a_order t_order) is
+      begin
+        null;
+      end;
+      function get_invalid_plsql_cases return clob is
+      begin
+        return
+          '[{"a_order": {"idx": 1}},' ||
+          ' {"a_order": {"lines": {"sku": "A"}}},' ||
+          ' {"a_order": {"lines": [{"shipped": "yes"}]}},' ||
+          ' {"a_order": {"rates": {"DE": "abc"}}}]';
       end;~' || l_boolean_body || q'~
     end;~';
   end;
@@ -2093,7 +2156,7 @@ procedure tag_exclude_run_fun_pth_lst_lg is
       '%Half of 3 from table is 2 [% (FAILED - 3)%' ||
       '%Half of 4 from table is 2 [%' ||
       '%Half of 10 from table is 5 [%' ||
-      '% tests, 3 failed, 8 errored, 1 disabled%'
+      '% tests, 3 failed, 12 errored, 1 disabled%'
     );
   end;
 
@@ -2214,6 +2277,28 @@ procedure tag_exclude_run_fun_pth_lst_lg is
     --Assert
     ut.expect(ut3_tester_helper.main_helper.table_to_clob(l_results)).to_be_like(
       '%PLS-00306%PLS-00306%2 tests, 0 failed, 2 errored%'
+    );
+  end;
+
+  procedure run_test_case_plsql_record is
+  begin
+    ut.expect(run_and_report('test_cases_in_ut3_user.plsql_record')).to_be_like('%Nested PL/SQL record%1 tests, 0 failed, 0 errored%');
+  end;
+
+  procedure run_test_case_plsql_collections is
+  begin
+    ut.expect(run_and_report('test_cases_in_ut3_user.plsql_collections')).to_be_like(
+      '%Associative arrays with 3 elements [%Associative arrays with 2 elements [%2 tests, 0 failed, 0 errored%'
+    );
+  end;
+
+  procedure run_test_case_plsql_invalid is
+  begin
+    ut.expect(run_and_report('test_cases_in_ut3_user.plsql_invalid')).to_be_like(
+      '%plsql_invalid[1]%TEST_CASES_IN_UT3_USER.T_ORDER has no field idx.' ||
+      '%plsql_invalid[2]%a JSON array is expected for TEST_CASES_IN_UT3_USER.T_LINES instead of {"sku":"A"}.' ||
+      '%plsql_invalid[3]%true or false expected instead of "yes".' ||
+      '%plsql_invalid[4]%ORA-01722%4 tests, 0 failed, 4 errored%'
     );
   end;
 

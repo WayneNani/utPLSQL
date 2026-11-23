@@ -457,6 +457,25 @@ create or replace noneditionable package body ut_suite_builder is
     return null;
   end;
 
+  -- the parameter names of the first overload of a procedure, in order
+  function get_parameter_names(a_annotations t_annotations_info, a_procedure_name t_object_name) return ut_varchar2_list is
+    l_result   ut_varchar2_list := ut_varchar2_list();
+    l_overload varchar2(40 char);
+  begin
+    if a_annotations.parameters is not null then
+      for i in 1 .. a_annotations.parameters.count loop
+        if a_annotations.parameters(i).procedure_name = upper(a_procedure_name)
+          and nvl(l_overload, a_annotations.parameters(i).overload) = a_annotations.parameters(i).overload
+          and a_annotations.parameters(i).parameter_name is not null then
+          l_overload := a_annotations.parameters(i).overload;
+          l_result.extend;
+          l_result(l_result.last) := a_annotations.parameters(i).parameter_name;
+        end if;
+      end loop;
+    end if;
+    return l_result;
+  end;
+
   procedure add_test_cases(
     a_suite       in out nocopy ut_suite,
     a_suite_items in out nocopy ut_suite_items,
@@ -497,7 +516,9 @@ create or replace noneditionable package body ut_suite_builder is
         l_test.item.call_arguments := l_arguments;
         l_test.description :=
           case
-            when l_is_json then ut_test_case_json.get_test_case_description(a_test.description, l_arguments)
+            when l_is_json then ut_test_case_json.get_test_case_description(
+              a_test.description, l_arguments, get_parameter_names(a_annotations, a_test.name)
+            )
             else get_test_case_description(a_test.description, l_arguments)
           end;
         a_suite_items.extend;

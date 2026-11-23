@@ -459,7 +459,8 @@ The function is given by name: `half_cases` for a function in the test package, 
 - The function is called when the suite runs, after its `--%beforeall` procedures, so it sees the data they create. It is called once, and the test cases it returns are kept in memory
   until they have run, so changes to the data in `--%beforeeach`, `--%beforetest` or earlier test cases don't affect later test cases.
 - Each test case becomes a separate test, named `<procedure>[1]`, `<procedure>[2]`, ... in the order the function returns them. Each test case is rolled back as usual.
-- The description can refer to the values of a test case with `{1}`, `{2}`, ... (position) and `{<name>}` (JSON key or column name).
+- The description can refer to the values of a test case with `{1}`, `{2}`, ... (position) and `{<name>}` (JSON key, column name,
+  or for the values of a JSON array the name of the parameter they are passed to).
   Without any placeholder, the values are appended to the description in brackets.
 - If the function fails or doesn't exist, the test is reported as errored. If it returns no test cases (an empty array, `null` or no rows), the suite gets a warning.
 - A disabled test doesn't call its function.
@@ -483,7 +484,7 @@ create or replace package test_discounts as
 
   c_bulk_limit constant number := 5000;
 
-  --%test(Bulk discount is {2})
+  --%test(Bulk discount is {a_expected})
   --%testcasesource(bulk_cases)
   procedure bulk_discount(a_lines order_lines, a_expected number);
   function bulk_cases return json_array_t;
@@ -570,11 +571,16 @@ JSON values of `--%testcase` and `--%testcasesource` are converted to the data t
 | `INTERVAL DAY TO SECOND`, `INTERVAL YEAR TO MONTH` | ISO 8601 duration or Oracle interval string, e.g. `"P1DT2H"` or `"1 02:00:00"` |
 | `RAW` | hexadecimal string, e.g. `"0AFF"` |
 | object type | JSON object with all attributes as keys, e.g. `{"sku": "A", "qty": 1, "unit_price": 100}` |
-| collection | JSON array, e.g. `[1, 2, 3]` |
+| collection (nested table, varray) | JSON array, e.g. `[1, 2, 3]` |
+| PL/SQL record (declared in a package) | JSON object with field names as keys, e.g. `{"sku": "A", "qty": 1}`; fields without key keep their default |
+| associative array indexed by `VARCHAR2` | JSON object, its keys are the indexes, e.g. `{"DE": 19, "AT": 20}` |
+| associative array indexed by `PLS_INTEGER` | JSON array (indexes 1, 2, ...), or JSON object with numeric keys for other indexes, e.g. `{"-1": "a", "10": "b"}` |
 
 - `null` passes `NULL` for every type.
 - A value that can't be converted, for example `"abc"` for a `NUMBER`, or an object with a missing or unknown attribute, makes that test case error; the other test cases run.
-- Other parameter types, such as `BLOB`, `XMLTYPE`, records and PL/SQL collections, can't be passed from JSON; such test cases error with `ORA-20220`.
+- Records, collections and associative arrays can be nested in each other and contain object types, for example a record with a table of records.
+  Keys of records are not case-sensitive; an unknown key makes the test case error.
+- Other parameter types, such as `BLOB`, `XMLTYPE` and `%ROWTYPE` records, can't be passed from JSON; such test cases error with `ORA-20220`.
 - JSON test cases can't be used with overloaded test procedures.
 - `json_object_t.put` writes `DATE` and `TIMESTAMP` values in the ISO 8601 format, so JSON built with the PL/SQL JSON API converts back without loss.
 

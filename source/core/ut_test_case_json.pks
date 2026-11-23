@@ -39,8 +39,9 @@ create or replace noneditionable package ut_test_case_json authid current_user a
 
   /**
    * Returns the description of a JSON test case, with the values of the test case filled in (see ut_utils.get_test_case_description).
+   * Values of a JSON array can be referred to by the names of the parameters they are passed to, given in a_parameter_names.
    */
-  function get_test_case_description(a_description varchar2, a_json clob) return varchar2;
+  function get_test_case_description(a_description varchar2, a_json clob, a_parameter_names ut_varchar2_list := null) return varchar2;
 
   /**
    * Returns a PL/SQL block that calls the procedure with the values of a JSON test case, converted to the types of its parameters.

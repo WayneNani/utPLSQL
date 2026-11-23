@@ -2203,7 +2203,7 @@ create or replace package body test_suite_builder is
     l_actual := invoke_builder_for_annotations(l_annotations, 'TEST_CASE_ARGS');
     --Assert
     ut.expect(l_actual).to_be_like(
-        '%<NAME>checked[1]</NAME><DESCRIPTION>Half of {a_amount} is {a_half}</DESCRIPTION>%'
+        '%<NAME>checked[1]</NAME><DESCRIPTION>Half of 2000 is 1000</DESCRIPTION>%'
     );
     ut.expect(l_actual).to_be_like(
         '%<NAME>checked[2]</NAME><DESCRIPTION>Half of 10 is 5</DESCRIPTION>%<CALL_ARGUMENTS>{&quot;a_half&quot;: 5, &quot;a_amount&quot;: 10}</CALL_ARGUMENTS>%'

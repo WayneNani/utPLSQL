@@ -411,6 +411,15 @@ create or replace package test_ut_run is
     --%test(Reports a test case as errored when its arguments don't fit the parameters, and continues the run)
     procedure run_test_case_wrong_type;
 
+    --%test(Passes nested PL/SQL records with collections from JSON)
+    procedure run_test_case_plsql_record;
+
+    --%test(Passes associative arrays indexed by string and by integer from JSON)
+    procedure run_test_case_plsql_collections;
+
+    --%test(Reports JSON values that don't fit a PL/SQL type as errors of the test case)
+    procedure run_test_case_plsql_invalid;
+
     $if dbms_db_version.version >= 23 $then
     --%test(Passes BOOLEAN values from the cursor of the --%testcasesource function)
     procedure run_test_case_source_boolean;
