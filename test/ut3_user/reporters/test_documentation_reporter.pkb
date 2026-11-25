@@ -55,5 +55,75 @@ Finished in % seconds
     ut.expect(l_actual).to_be_like(l_expected);  
   end;
 
+  procedure create_long_texts_suite is
+    pragma autonomous_transaction;
+  begin
+    -- annotation lines start in the first column: a source line can't be longer than 4000 characters
+    execute immediate
+      'create or replace package test_long_texts as' || chr(10) ||
+      '--%suite(Long texts)' || chr(10) || chr(10) ||
+      '--%test(' || rpad('a', 3990, 'a') || ')' || chr(10) ||
+      'procedure long_description;' || chr(10) ||
+      '--%test(' || rpad('f', 3990, 'f') || ')' || chr(10) ||
+      'procedure long_failing_description;' || chr(10) ||
+      '--%test(Disabled)' || chr(10) ||
+      '--%disabled(' || rpad('d', 3986, 'd') || ')' || chr(10) ||
+      'procedure long_disabled_reason;' || chr(10) ||
+      'end;';
+    execute immediate
+      'create or replace package body test_long_texts as
+         procedure long_description is
+         begin
+           ut3_develop.ut.expect(1).to_equal(1);
+         end;
+         procedure long_failing_description is
+         begin
+           ut3_develop.ut.expect(1).to_equal(2);
+         end;
+         procedure long_disabled_reason is
+         begin
+           null;
+         end;
+       end;';
+  end;
+
+  procedure drop_long_texts_suite is
+    pragma autonomous_transaction;
+  begin
+    execute immediate 'drop package test_long_texts';
+  end;
+
+  function run_long_texts(a_path varchar2) return clob is
+    l_results ut3_develop.ut_varchar2_list;
+  begin
+    select *
+      bulk collect into l_results
+      from table(ut3_develop.ut.run(a_path, ut3_develop.ut_documentation_reporter()));
+    return ut3_tester_helper.main_helper.table_to_clob(l_results);
+  end;
+
+  procedure report_long_description is
+  begin
+    ut.expect(run_long_texts('test_long_texts.long_description')).to_be_like(
+      -- the line is longer than 4000 characters, so the output buffer splits it, within the execution time
+      '%' || rpad('a', 3900, 'a') || '%[%1 tests, 0 failed, 0 errored, 0 disabled, 0 warning(s)%'
+    );
+  end;
+
+  procedure report_long_failing_description is
+  begin
+    ut.expect(run_long_texts('test_long_texts.long_failing_description')).to_be_like(
+      '%' || rpad('f', 3900, 'f') || '%[%(FAILED - 1)%1 tests, 1 failed, 0 errored, 0 disabled, 0 warning(s)%'
+    );
+  end;
+
+  procedure report_long_disabled_reason is
+  begin
+    ut.expect(run_long_texts('test_long_texts.long_disabled_reason')).to_be_like(
+      -- the line is longer than 4000 characters, so the output buffer splits it
+      '%Disabled [0 sec] (DISABLED - ' || rpad('d', 3900, 'd') || '%1 tests, 0 failed, 0 errored, 1 disabled, 0 warning(s)%'
+    );
+  end;
+
 end;
 /

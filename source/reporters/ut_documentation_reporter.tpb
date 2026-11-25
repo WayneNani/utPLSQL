@@ -62,7 +62,8 @@ create or replace noneditionable type body ut_documentation_reporter is
   end;
 
   overriding member procedure after_calling_test(self in out nocopy ut_documentation_reporter, a_test ut_test) as
-    l_message varchar2(4000);
+    -- the description can have 4000 bytes, and the execution time is appended to it
+    l_message varchar2(32767);
 
   begin
     l_message := coalesce(a_test.description, a_test.name)||' ['||round(a_test.execution_time,3)||' sec]';
