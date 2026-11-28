@@ -68,7 +68,7 @@ create or replace noneditionable type ut_test force under ut_suite_item (
   member function get_failed_expectation_lines return ut_varchar2_rows,
   overriding member function has_test_case_source(self in ut_test) return boolean,
   /**
-  * Calls the --%testcasesource function and returns one test for each element of its JSON array or row of its cursor.
+  * Calls the --%testcasesource function and returns one test for each element of its JSON array.
   */
   member function get_source_test_cases(self in ut_test) return ut_suite_items
 )

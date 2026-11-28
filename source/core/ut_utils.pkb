@@ -236,23 +236,50 @@ create or replace noneditionable package body ut_utils is
     a_description varchar2, a_names ut_varchar2_list, a_values ut_varchar2_list
   ) return varchar2 is
     c_max_value_length constant integer := 100;
-    l_result   varchar2(32767) := a_description;
-    l_appendix varchar2(32767);
-    l_value    varchar2(32767);
+    c_placeholder      constant varchar2(30) := '\{([[:alnum:]_$#]+)\}';
+    l_values     ut_varchar2_list := ut_varchar2_list();
+    l_result     varchar2(32767);
+    l_appendix   varchar2(32767);
+    l_position   integer := 1;
+    l_start      integer;
+    l_name       varchar2(4000);
+    l_index      integer;
+    l_unresolved boolean := false;
+
+    -- the value a placeholder refers to: by number, or by name
+    function find_value(a_name varchar2) return integer is
+    begin
+      if regexp_like(a_name, '^[0-9]{1,9}$') and to_number(a_name) between 1 and l_values.count then
+        return to_number(a_name);
+      end if;
+      for i in 1 .. l_values.count loop
+        if upper(a_names(i)) = upper(a_name) then
+          return i;
+        end if;
+      end loop;
+      return null;
+    end;
   begin
     for i in 1 .. a_values.count loop
       -- long values would make the description unreadable
-      l_value := substr(a_values(i), 1, c_max_value_length) || case when length(a_values(i)) > c_max_value_length then '...' end;
-      l_appendix := l_appendix || case when i > 1 then ', ' end || l_value;
-      if regexp_like(a_description, '\{[[:alnum:]_$#]+\}') then
-        l_result := replace(l_result, '{' || i || '}', l_value);
-        if a_names(i) is not null then
-          l_result := replace(replace(l_result, '{' || a_names(i) || '}', l_value), '{' || lower(a_names(i)) || '}', l_value);
-        end if;
-      end if;
+      l_values.extend;
+      l_values(i) := substr(a_values(i), 1, c_max_value_length) || case when length(a_values(i)) > c_max_value_length then '...' end;
+      l_appendix := l_appendix || case when i > 1 then ', ' end || l_values(i);
     end loop;
-    if not regexp_like(a_description, '\{[[:alnum:]_$#]+\}') then
-      l_result := a_description || case when a_description is not null and l_appendix is not null then ' (' || l_appendix || ')' end;
+    -- a single pass, so that a value that looks like a placeholder isn't replaced
+    loop
+      l_start := regexp_instr(a_description, c_placeholder, l_position);
+      exit when nvl(l_start, 0) = 0;
+      l_name := regexp_substr(a_description, c_placeholder, l_position, 1, null, 1);
+      l_index := find_value(l_name);
+      l_unresolved := l_unresolved or l_index is null;
+      l_result := l_result || substr(a_description, l_position, l_start - l_position)
+        || case when l_index is not null then l_values(l_index) else '{' || l_name || '}' end;
+      l_position := l_start + length(l_name) + 2;
+    end loop;
+    l_result := l_result || substr(a_description, l_position);
+    if l_position = 1 or l_unresolved then
+      l_result := l_result || case when l_result is not null and l_appendix is not null then ' (' || l_appendix || ')' end;
     end if;
     return substrb(l_result, 1, gc_max_storage_varchar2_len);
   end;

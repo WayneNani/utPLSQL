@@ -31,8 +31,7 @@ create or replace noneditionable type ut_executable under ut_event_item(
   */
   seq_no                integer,
   /**
-  * Arguments passed to the procedure: the JSON array or object of a --%testcase, e.g. ["VIP", 2000],
-  * or for a row of a --%testcasesource cursor the generated argument list that reads its values
+  * Arguments passed to the procedure: the JSON array or object of a --%testcase, e.g. ["VIP", 2000]
   */
   call_arguments        varchar2(4000 char),
   /**
@@ -40,7 +39,7 @@ create or replace noneditionable type ut_executable under ut_event_item(
   */
   call_source           varchar2(4000 char),
   /**
-  * Number of the test case (element or row) the call_source function returned; null for the test that is not yet split
+  * Number of the test case (element of the JSON array) the call_source function returned; null for the test that is not yet split
   * into its test cases. The values of the test case are kept in ut_test_case_values.
   */
   call_source_row       integer,

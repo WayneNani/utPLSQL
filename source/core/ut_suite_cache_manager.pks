@@ -66,6 +66,16 @@ create or replace noneditionable package ut_suite_cache_manager authid current_u
   ) return ut_suite_cache_rows;
 
   /*
+  * The test cases that the paths select from tests with a --%testcasesource, e.g. "pkg.test[2]":
+  * key = owner || ':' || path of the test, value = number of the test case.
+  * A test that a path selects as a whole (e.g. "pkg.test" or "pkg") has no entry, so all its test cases run.
+  * Not to be used publicly. Used internally for building suites at runtime.
+  */
+  function get_test_case_filters(
+    a_schema_paths ut_path_items
+  ) return ut_key_value_pairs;
+
+  /*
   * Retrieves information about the suite items matching the paths, as get_suite_rows does without tags.
   * Not to be used publicly. Used internally for ut_runner.get_suites_info.
   */

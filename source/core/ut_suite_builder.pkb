@@ -377,82 +377,6 @@ create or replace noneditionable package body ut_suite_builder is
     return l_result;
   end;
 
-  /*
-    Checks the arguments of a JSON test case (see ut_test_case_json.get_argument_names) against the parameters of the procedure:
-    number of values, parameter names and parameters without default value.
-    Types are not checked here; values are converted when the test case runs.
-    Returns null when the arguments fit one of the overloads, or when the procedure is not known (it is reported when called).
-  */
-  function get_arguments_error(
-    a_annotations      t_annotations_info,
-    a_procedure_name   t_object_name,
-    a_argument_names   ut_varchar2_list
-  ) return varchar2 is
-    l_procedure_name t_object_name := upper(a_procedure_name);
-    l_overload       varchar2(40 char);
-    l_names          ut_varchar2_list := ut_varchar2_list();
-    l_defaulted      ut_varchar2_list := ut_varchar2_list();
-    l_error          varchar2(4000 char);
-    l_first_error    varchar2(4000 char);
-
-    function get_overload_error return varchar2 is
-      type tt_given is table of boolean index by t_object_name;
-      l_given   tt_given;
-      l_name    t_object_name;
-      l_missing varchar2(4000 char);
-    begin
-      for i in 1 .. a_argument_names.count loop
-        l_name := upper(a_argument_names(i));
-        if l_name is null then
-          if i > l_names.count then
-            return a_argument_names.count || ' value(s) given, but the procedure has ' || l_names.count || ' parameter(s)';
-          end if;
-          l_given(l_names(i)) := true;
-        else
-          if not l_name member of l_names then
-            return 'the procedure has no parameter ' || l_name;
-          elsif l_given.exists(l_name) then
-            return 'parameter ' || l_name || ' is given twice';
-          end if;
-          l_given(l_name) := true;
-        end if;
-      end loop;
-      for i in 1 .. l_names.count loop
-        if l_defaulted(i) = 'N' and not l_given.exists(l_names(i)) then
-          l_missing := l_missing || case when l_missing is not null then ', ' end || l_names(i);
-        end if;
-      end loop;
-      return case when l_missing is not null then 'no value for parameter(s) ' || l_missing end;
-    end;
-  begin
-    for i in 1 .. a_annotations.parameters.count loop
-      if a_annotations.parameters(i).procedure_name = l_procedure_name then
-        if l_overload is not null and l_overload != a_annotations.parameters(i).overload then
-          l_error := get_overload_error();
-          if l_error is null then
-            return null;
-          end if;
-          l_first_error := coalesce(l_first_error, l_error);
-          l_names := ut_varchar2_list();
-          l_defaulted := ut_varchar2_list();
-        end if;
-        l_overload := a_annotations.parameters(i).overload;
-        -- an overload without parameters has one entry without parameter name
-        if a_annotations.parameters(i).parameter_name is not null then
-          l_names.extend;
-          l_names(l_names.last) := a_annotations.parameters(i).parameter_name;
-          l_defaulted.extend;
-          l_defaulted(l_defaulted.last) := a_annotations.parameters(i).defaulted;
-        end if;
-      end if;
-    end loop;
-    if l_overload is not null then
-      l_error := get_overload_error();
-      return case when l_error is not null then coalesce(l_first_error, l_error) end;
-    end if;
-    return null;
-  end;
-
   procedure add_test_cases(
     a_suite       in out nocopy ut_suite,
     a_suite_items in out nocopy ut_suite_items,
@@ -463,23 +387,19 @@ create or replace noneditionable package body ut_suite_builder is
     l_test       ut_test;
     l_position   t_annotation_position := a_test_cases.first;
     l_case_no    binary_integer := 0;
-    l_error      varchar2(4000 char);
     l_arguments  varchar2(4000 char);
     l_parameters ut_metadata.tt_parameters := get_parameters(a_annotations, a_test.name);
   begin
     while l_position is not null loop
-      -- cases are numbered by annotation, so that the number of a case does not change when another case is invalid
+      -- cases are numbered by annotation, so that the number of a case doesn't change when an empty annotation is filled
       l_case_no := l_case_no + 1;
       l_arguments := trim(a_test_cases(l_position));
-      l_error := ut_test_case_json.get_json_error(l_arguments);
-      if l_error is null then
-        l_error := get_arguments_error(a_annotations, a_test.name, ut_test_case_json.get_argument_names(l_arguments));
-      end if;
-      if l_error is not null then
+      if l_arguments is null then
         add_annotation_ignored_warning(
-          a_suite, gc_testcase, 'Annotation %%% has invalid arguments: ' || l_error || '.', l_position, a_test.name
+          a_suite, gc_testcase, 'Annotation %%% requires a JSON array or object, e.g. "--%testcase([1, 2])".', l_position, a_test.name
         );
       else
+        -- each test case is a test, also an invalid one: it errors when it runs (see ut_test_case_json.get_call)
         l_test := a_test;
         -- each case gets its own cache row, keyed by owner + path and by owner + package + line
         l_test.line_no := l_position;

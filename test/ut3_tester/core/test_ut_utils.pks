@@ -129,10 +129,16 @@ create or replace package test_ut_utils is
   --%test(Appends the arguments when the description has no placeholders)
   procedure test_case_descr_appends;
 
-  --%test(Replaces placeholders by position and by name)
+  --%test(Replaces placeholders by position and by name, not case-sensitive)
   procedure test_case_descr_placeholders;
 
-  --%test(Shortens values longer than 100 characters and appends the values when no appendix is given)
+  --%test(Appends the values when a placeholder refers to no value)
+  procedure test_case_descr_unresolved;
+
+  --%test(Doesn't replace placeholders in values)
+  procedure test_case_descr_value_braces;
+
+  --%test(Shortens values longer than 100 characters)
   procedure test_case_descr_shortens;
 
   --%test(Keeps a null description null)

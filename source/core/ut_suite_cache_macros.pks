@@ -26,15 +26,19 @@ create or replace noneditionable package ut_suite_cache_macros authid definer as
 
   /**
    * Table SQL macro matching suite items with run paths: the single definition of which items a run path selects.
-   * Returns one row (path_id, object_owner, path) for every pair of a path and an item it selects:
+   * Returns one row (path_id, object_owner, path, test_case_no) for every pair of a path and an item it selects:
    * - schema:                         all items of the schema
    * - schema.package[.*]:             all items of the package
-   * - schema.package.procedure:       the items named like the procedure
+   * - schema.package.procedure:       the items named like the procedure, and its test cases (procedure[n])
+   * - schema.package.procedure[n]:    test case n of the procedure
    * - schema:suite.path:              the item at the suitepath and all items below it
    * - schema:suite*.path:             the items whose path starts with a match of the suitepath pattern
    * Package and procedure names may contain wildcards (*). Parents of the selected items are not returned.
+   * A test with a --%testcasesource has a single item for its test cases: a path ending in [n] selects it,
+   * with test_case_no n; test_case_no is null for all other pairs.
    *
-   * @param a_items table or query with columns object_owner, object_name, name, path (as in ut_suite_cache), without collection columns
+   * @param a_items table or query with columns object_owner, object_name, name, path (as in ut_suite_cache)
+   *                and has_test_case_source ('Y' for a test with a --%testcasesource), without collection columns
    * @param a_paths table or query with columns path_id and the columns of ut_path_item
    */
   function match_paths(a_items dbms_tf.table_t, a_paths dbms_tf.table_t) return varchar2 sql_macro;

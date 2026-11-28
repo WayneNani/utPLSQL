@@ -57,7 +57,6 @@ create or replace noneditionable type body ut_executable is
   return boolean is
     l_statement                   varchar2(32767);
     l_call                        varchar2(32767);
-    l_values                      ut_anydata_list;
     l_json                        clob;
     l_call_error                  varchar2(32767);
     l_parse_error                 varchar2(32767);
@@ -67,39 +66,6 @@ create or replace noneditionable type body ut_executable is
     l_failed_with_invalid_pck     boolean := true;
     l_start_transaction_id        varchar2(250);
     l_end_transaction_id          varchar2(250);
-
-    /*
-      Unpacks the argument values of a --%testcasesource test case, bound as :ut_values.
-      Object types and collections need a variable of their type; other values are read by the call itself.
-    */
-    function get_test_case_call(a_values ut_anydata_list, a_call varchar2) return varchar2 is
-      l_declarations varchar2(32767);
-      l_unpacking    varchar2(32767);
-      l_type         anytype;
-      l_typecode     pls_integer;
-    begin
-      for i in 1 .. a_values.count loop
-        -- the type code, as gettypename raises no_data_found for an NCLOB
-        l_typecode := a_values(i).gettype(l_type);
-        if l_typecode in (dbms_types.typecode_object, dbms_types.typecode_namedcollection, dbms_types.typecode_varray, dbms_types.typecode_table) then
-          l_declarations := l_declarations ||
-            '      l_ut_value_' || i || ' "' || replace(a_values(i).gettypename(), '.', '"."') || '";' || chr(10);
-          l_unpacking := l_unpacking ||
-            '      l_ut_rc := l_ut_values(' || i || ').' ||
-            case when l_typecode = dbms_types.typecode_object then 'getobject' else 'getcollection' end ||
-            '(l_ut_value_' || i || ');' || chr(10);
-        end if;
-      end loop;
-      return
-        'declare' || chr(10) ||
-        '      l_ut_values ' || ut_utils.ut_owner || '.ut_anydata_list := :ut_values;' || chr(10) ||
-        '      l_ut_rc     pls_integer;' || chr(10) ||
-        l_declarations ||
-        '    begin' || chr(10) ||
-        l_unpacking ||
-        '      ' || a_call || chr(10) ||
-        '    end;';
-    end;
 
     function is_defined return boolean is
       l_result boolean := false;
@@ -161,21 +127,20 @@ create or replace noneditionable type body ut_executable is
         if self.call_source is not null then
           l_json := ut_test_case_values.get_json(a_item.path);
           if l_json is null then
-            l_call := self.form_name( a_skip_current_user_schema => true ) || '(' || self.call_arguments || ');';
-            -- without its values (e.g. package state was reset) the test case errors when it reads them, instead of breaking the run
-            l_values := coalesce(ut_test_case_values.get_values(a_item.path), ut_anydata_list());
-            l_call := get_test_case_call(l_values, l_call);
+            raise_application_error(
+              ut_utils.gc_invalid_test_case_source, 'The values of the test case are no longer available, e.g. as the session state was reset.'
+            );
           end if;
         elsif self.call_arguments is not null then
           -- the arguments of a --%testcase are JSON
           l_json := self.call_arguments;
-        else
-          l_call := self.form_name( a_skip_current_user_schema => true ) || ';';
         end if;
         if l_json is not null then
           l_call := ut_test_case_json.get_call(
             self.owner_name, self.object_name, self.procedure_name, self.form_name( a_skip_current_user_schema => true ), l_json
           );
+        else
+          l_call := self.form_name( a_skip_current_user_schema => true ) || ';';
         end if;
       exception
         when others then
@@ -225,9 +190,7 @@ create or replace noneditionable type body ut_executable is
       **/
       begin
         dbms_sql.parse(l_cursor_number, statement => l_statement, language_flag => dbms_sql.native);
-        if l_call_error is null and l_values is not null then
-          dbms_sql.bind_variable(l_cursor_number, 'ut_values', l_values);
-        elsif l_call_error is null and l_json is not null then
+        if l_call_error is null and l_json is not null then
           dbms_sql.bind_variable(l_cursor_number, 'ut_json', l_json);
         end if;
         dbms_sql.bind_variable(l_cursor_number, 'a_error_stack', to_char(null), 32767);

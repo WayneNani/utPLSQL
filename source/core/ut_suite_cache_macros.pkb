@@ -18,9 +18,16 @@ create or replace noneditionable package body ut_suite_cache_macros as
 
   function match_paths(a_items dbms_tf.table_t, a_paths dbms_tf.table_t) return varchar2 sql_macro is
   begin
-    --names: "_" is not a wildcard, "*" is; suitepath patterns: "." and "$" are literal, "*" matches part of a path element
-    return q'[
-      select p.path_id, i.object_owner, i.path
+    --names: "_" is not a wildcard, "*" is; suitepath patterns: ".", "$", "[" and "]" are literal, "*" matches part of a path element
+    --a test with a --%testcasesource has one row for all its test cases, which are known only when it runs:
+    --"procedure[n]" selects that row, and test_case_no tells which of its test cases to run
+    --q'~ quoting, as the text contains ]'
+    return q'~
+      select p.path_id, i.object_owner, i.path,
+             case
+               when i.has_test_case_source = 'Y' and coalesce(p.procedure_name, p.suite_path) like '%]' then
+                 to_number(regexp_substr(coalesce(p.procedure_name, p.suite_path), '\[([0-9]+)\]$', 1, 1, null, 1))
+             end as test_case_no
         from a_items i
         join a_paths p
           on i.object_owner = upper(p.schema_name)
@@ -30,17 +37,20 @@ create or replace noneditionable package body ut_suite_cache_macros as
                and ( p.procedure_name is null or p.procedure_name = '*'
                      or i.name like replace(replace(upper(p.procedure_name), '_', '\_'), '*', '%') escape '\'
                      or i.name like replace(replace(upper(p.procedure_name), '_', '\_'), '*', '%') || '[%' escape '\'
+                     or ( i.has_test_case_source = 'Y' and i.name = regexp_replace(upper(p.procedure_name), '\[[0-9]+\]$') )
                    )
              )
           or ( instr(p.suite_path, '*') = 0
-               and ( i.path = p.suite_path or substr(i.path, 1, length(p.suite_path) + 1) in (p.suite_path || '.', p.suite_path || '[') )
+               and ( i.path = p.suite_path or substr(i.path, 1, length(p.suite_path) + 1) in (p.suite_path || '.', p.suite_path || '[')
+                     or ( i.has_test_case_source = 'Y' and i.path = regexp_replace(p.suite_path, '\[[0-9]+\]$') )
+                   )
              )
           or ( instr(p.suite_path, '*') > 0
                and regexp_like(
                      i.path,
-                     '^' || replace(replace(replace(p.suite_path, '.', '\.'), '$', '\$'), '*', '[[:alnum:]$#_]*')
+                     '^' || replace(replace(replace(replace(replace(p.suite_path, '.', '\.'), '$', '\$'), '[', '\['), ']', '\]'), '*', '[[:alnum:]$#_]*')
                    )
-             )]';
+             )~';
   end;
 
 end;

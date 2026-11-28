@@ -66,7 +66,7 @@ create or replace noneditionable package body ut_test_case_json as
         a_values.extend;
         a_values(a_values.last) := display_value(l_array.get(i), case when l_array.get(i).is_string then l_array.get_clob(i) end);
       end loop;
-    else
+    elsif l_element.is_object then
       l_object := treat(l_element as json_object_t);
       l_keys := l_object.get_keys;
       for i in 1 .. l_keys.count loop
@@ -77,15 +77,12 @@ create or replace noneditionable package body ut_test_case_json as
           l_object.get(l_keys(i)), case when l_object.get(l_keys(i)).is_string then l_object.get_clob(l_keys(i)) end
         );
       end loop;
+    else
+      -- a test case that is no JSON array or object errors when it runs, but is shown with its value
+      a_names.extend;
+      a_values.extend;
+      a_values(1) := dbms_lob.substr(l_element.to_clob, ut_utils.gc_max_storage_varchar2_len);
     end if;
-  end;
-
-  function get_argument_names(a_json clob) return ut_varchar2_list is
-    l_names  ut_varchar2_list;
-    l_values ut_varchar2_list;
-  begin
-    get_names_and_values(a_json, l_names, l_values);
-    return l_names;
   end;
 
   function get_test_case_description(
@@ -96,6 +93,12 @@ create or replace noneditionable package body ut_test_case_json as
   begin
     get_names_and_values(a_json, l_names, l_values, a_parameter_names);
     return ut_utils.get_test_case_description(a_description, l_names, l_values);
+  exception
+    when others then
+      -- text that is no JSON is shown as it is; the test case errors when it runs
+      return ut_utils.get_test_case_description(
+        a_description, ut_varchar2_list(null), ut_varchar2_list(dbms_lob.substr(a_json, ut_utils.gc_max_storage_varchar2_len))
+      );
   end;
 
   function get_call(a_owner varchar2, a_package varchar2, a_procedure varchar2, a_call_name varchar2, a_json clob) return varchar2 is
@@ -103,7 +106,7 @@ create or replace noneditionable package body ut_test_case_json as
     l_all_parameters ut_metadata.tt_parameters :=
       ut_metadata.get_package_parameters(upper(a_owner), upper(a_package), upper(a_procedure));
     l_parameters     ut_metadata.tt_parameters := ut_metadata.tt_parameters();
-    l_element        json_element_t := json_element_t.parse(a_json);
+    l_element        json_element_t;
     l_array          json_array_t;
     l_keys           json_key_list;
     l_case_type      varchar2(30 char);
@@ -254,22 +257,22 @@ create or replace noneditionable package body ut_test_case_json as
       l_arguments := l_arguments || case when l_arguments is not null then ', ' end || '"' || a_parameter.parameter_name || '" => ' || l_variable;
     end;
 
-    -- a key that is no parameter is an error, not ignored, so that a misspelled key doesn't silently leave
-    -- a parameter at its default (decided in #1326)
+    -- the parameter named like a key, not case-sensitive; null for a key that is no parameter
     function find_parameter(a_key varchar2) return ut_metadata.t_parameter is
       l_result ut_metadata.t_parameter;
     begin
       for i in 1 .. l_parameters.count loop
-        if l_parameters(i).parameter_name = upper(a_key) then
+        if upper(l_parameters(i).parameter_name) = upper(a_key) then
           l_result := l_parameters(i);
         end if;
       end loop;
-      if l_result.parameter_name is null then
-        raise_invalid('the procedure has no parameter ' || a_key);
-      end if;
       return l_result;
     end;
   begin
+    if get_json_error(a_json) is not null then
+      raise_invalid(get_json_error(a_json));
+    end if;
+    l_element := json_element_t.parse(a_json);
     for i in 1 .. l_all_parameters.count loop
       if l_all_parameters(i).overload != l_all_parameters(1).overload then
         raise_invalid('JSON test cases can''t be used with the overloaded procedure ' || upper(a_procedure));
@@ -279,35 +282,37 @@ create or replace noneditionable package body ut_test_case_json as
         l_parameters(l_parameters.last) := l_all_parameters(i);
       end if;
     end loop;
+    if l_parameters.count = 0 then
+      raise_invalid('the procedure ' || upper(a_procedure) || ' has no parameters, so it can''t be run with test cases');
+    end if;
 
+    -- values and keys beyond the parameters are ignored (see the package specification);
+    -- the generated code never contains a key, it reads the values by position
     if l_element.is_array then
       l_case_type := 'json_array_t';
       l_array := treat(l_element as json_array_t);
-      if l_array.get_size > l_parameters.count then
-        raise_invalid(l_array.get_size || ' value(s) given, but the procedure has ' || l_parameters.count || ' parameter(s)');
-      end if;
-      for i in 0 .. l_array.get_size - 1 loop
+      for i in 0 .. least(l_array.get_size, l_parameters.count) - 1 loop
         add_argument(l_parameters(i + 1), to_char(i));
         l_given.extend;
-        l_given(l_given.last) := l_parameters(i + 1).parameter_name;
+        l_given(l_given.last) := upper(l_parameters(i + 1).parameter_name);
       end loop;
     else
-      -- only JSON arrays and objects get here, see get_json_error and ut_test.get_source_test_cases
       l_case_type := 'json_object_t';
       l_keys := treat(l_element as json_object_t).get_keys;
       for i in 1 .. l_keys.count loop
-        if upper(l_keys(i)) member of l_given then
-          raise_invalid('parameter ' || upper(l_keys(i)) || ' is given twice');
+        if find_parameter(l_keys(i)).parameter_name is not null then
+          if upper(l_keys(i)) member of l_given then
+            raise_invalid('parameter ' || upper(l_keys(i)) || ' is given twice');
+          end if;
+          l_given.extend;
+          l_given(l_given.last) := upper(l_keys(i));
+          add_argument(find_parameter(l_keys(i)), 'l_ut_keys(' || i || ')');
         end if;
-        l_given.extend;
-        l_given(l_given.last) := upper(l_keys(i));
-        -- the key matches a parameter name, so it can be used in a string literal as it is
-        add_argument(find_parameter(l_keys(i)), '''' || l_keys(i) || '''');
       end loop;
     end if;
     l_index := l_parameters.first;
     while l_index is not null loop
-      if l_parameters(l_index).defaulted = 'N' and not l_parameters(l_index).parameter_name member of l_given then
+      if l_parameters(l_index).defaulted = 'N' and not upper(l_parameters(l_index).parameter_name) member of l_given then
         raise_invalid('no value for parameter ' || l_parameters(l_index).parameter_name || ', which has no default value');
       end if;
       l_index := l_parameters.next(l_index);
@@ -316,6 +321,7 @@ create or replace noneditionable package body ut_test_case_json as
     return
       'declare' || chr(10) ||
       '  l_ut_case ' || l_case_type || ' := ' || l_case_type || '.parse(:ut_json);' || chr(10) ||
+      case when l_case_type = 'json_object_t' then '  l_ut_keys json_key_list := l_ut_case.get_keys;' || chr(10) end ||
       l_declarations ||
       l_functions ||
       'begin' || chr(10) ||

@@ -244,12 +244,13 @@ create or replace noneditionable package ut_utils authid definer is
   /**
    *
    * Builds the description of a test case of a --%testcase or --%testcasesource test.
-   * {1}, {2}, ... in the description are replaced with the values, {<name>} with the value of that name.
-   * Without placeholders, the values separated by commas are appended in brackets. A null description stays null.
+   * {1}, {2}, ... in the description are replaced with the values, {<name>} with the value of that name (not case-sensitive).
+   * When the description has no placeholder, or a placeholder that refers to no value, the values separated by commas
+   * are appended in brackets, so that the description always shows the values. A null description stays null.
    * Values longer than 100 characters are shortened.
    *
    * @param a_description the description of the test
-   * @param a_names       names of the values (parameter or column names), elements may be null
+   * @param a_names       names of the values (parameter names or JSON keys), elements may be null
    * @param a_values      the values, as shown in the description
    */
   function get_test_case_description(

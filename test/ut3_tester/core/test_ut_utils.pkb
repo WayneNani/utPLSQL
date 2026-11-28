@@ -385,10 +385,39 @@ end;';
   begin
     ut.expect(
       ut3_develop.ut_utils.get_test_case_description(
-        'Amount {1}, kind {a_kind}, unknown {3}',
+        '{1}: amount {1}, kind {a_kind}, also {A_Kind}',
         ut3_develop.ut_varchar2_list(null, 'A_KIND'), ut3_develop.ut_varchar2_list('100', q'['VIP']')
       )
-    ).to_equal(q'[Amount 100, kind 'VIP', unknown {3}]');
+    ).to_equal(q'[100: amount 100, kind 'VIP', also 'VIP']');
+  end;
+
+  procedure test_case_descr_unresolved is
+  begin
+    ut.expect(
+      ut3_develop.ut_utils.get_test_case_description(
+        'Not existing {reference}', ut3_develop.ut_varchar2_list('a', 'b'), ut3_develop.ut_varchar2_list('4', '2')
+      )
+    ).to_equal('Not existing {reference} (4, 2)');
+    ut.expect(
+      ut3_develop.ut_utils.get_test_case_description(
+        'Amount {1}, unknown {3}, none {0}', ut3_develop.ut_varchar2_list(null, null), ut3_develop.ut_varchar2_list('100', 'x')
+      )
+    ).to_equal('Amount 100, unknown {3}, none {0} (100, x)');
+    -- {} and { 1 } are no placeholders
+    ut.expect(
+      ut3_develop.ut_utils.get_test_case_description(
+        'Set {} and { 1 }', ut3_develop.ut_varchar2_list(null), ut3_develop.ut_varchar2_list('7')
+      )
+    ).to_equal('Set {} and { 1 } (7)');
+  end;
+
+  procedure test_case_descr_value_braces is
+  begin
+    ut.expect(
+      ut3_develop.ut_utils.get_test_case_description(
+        '{1} and {2}', ut3_develop.ut_varchar2_list(null, null), ut3_develop.ut_varchar2_list('{2}', 'b')
+      )
+    ).to_equal('{2} and b');
   end;
 
   procedure test_case_descr_shortens is

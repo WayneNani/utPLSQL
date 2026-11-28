@@ -121,7 +121,7 @@ begin
   ut.run('hr.test_apply_bonus.bonus_for_amount[2]');
 end;
 ```
-Executes only the second test case of the test procedure _hr.test_apply_bonus.bonus_for_amount_, see [Testcase](annotations.md#testcase).
+Executes only the second test case of the test procedure _hr.test_apply_bonus.bonus_for_amount_, see [Testcase](annotations.md#testcase) and [Testcasesource](annotations.md#testcasesource).
 
 
 ```sql linenums="1"

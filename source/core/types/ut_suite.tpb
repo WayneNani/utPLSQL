@@ -46,9 +46,10 @@ create or replace noneditionable type body ut_suite  as
 
     -- the --%testcasesource functions run after beforeall, so they see the data that beforeall created
     procedure execute_with_test_case_sources is
-      l_items ut_suite_items := ut_suite_items();
-      l_test  ut_test;
-      l_cases ut_suite_items;
+      l_items  ut_suite_items := ut_suite_items();
+      l_test   ut_test;
+      l_cases  ut_suite_items;
+      l_filter ut_integer_list;
 
       procedure add_item(a_item ut_suite_item) is
       begin
@@ -68,22 +69,35 @@ create or replace noneditionable type body ut_suite  as
               add_item(l_test);
           end;
           if l_cases is not null then
+            -- the test cases the run selects by path, e.g. "pkg.test[2]"; all when empty
+            l_filter := ut_test_case_values.get_case_filter(l_test.object_owner, l_test.path);
             if l_cases.count = 0 then
               self.put_warning('The --%testcasesource function returned no test cases.', l_test.name, l_test.line_no);
             end if;
+            for j in 1 .. l_filter.count loop
+              if l_filter(j) > l_cases.count then
+                self.put_warning(
+                  'Test case ' || l_filter(j) || ' doesn''t exist, the --%testcasesource function returned '
+                  || l_cases.count || ' test case(s).',
+                  l_test.name, l_test.line_no
+                );
+              end if;
+            end loop;
             for j in 1 .. l_cases.count loop
-              begin
-                l_cases(j).do_execute();
-              exception
-                when others then
-                  -- don't keep the values of the test cases that won't run
-                  for k in j .. l_cases.count loop
-                    ut_test_case_values.remove_values(l_cases(k).path);
-                  end loop;
-                  raise;
-              end;
-              ut_test_case_values.remove_values(l_cases(j).path);
-              add_item(l_cases(j));
+              if l_filter.count = 0 or j member of l_filter then
+                begin
+                  l_cases(j).do_execute();
+                exception
+                  when others then
+                    -- don't keep the values of the test cases that won't run
+                    for k in j .. l_cases.count loop
+                      ut_test_case_values.remove_json(l_cases(k).path);
+                    end loop;
+                    raise;
+                end;
+                add_item(l_cases(j));
+              end if;
+              ut_test_case_values.remove_json(l_cases(j).path);
             end loop;
           end if;
         else

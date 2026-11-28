@@ -65,7 +65,8 @@ create or replace noneditionable package body ut_suite_cache_manager is
       ),
       schema_items as (
         --only scalar columns: a table argument of a SQL macro cannot have collection columns (ORA-62558)
-        select /*+ no_parallel */ c.id, c.object_owner, c.object_name, c.name, c.path
+        select /*+ no_parallel */ c.id, c.object_owner, c.object_name, c.name, c.path,
+               case when c.item.call_source is not null then 'Y' end as has_test_case_source
           from &&ut3_owner..ut_suite_cache c
          where c.object_owner in (select upper(p.schema_name) from path_items p)
       )
@@ -82,6 +83,35 @@ create or replace noneditionable package body ut_suite_cache_manager is
         or ( exists ( select 1 from all_objects a where a.owner = s.object_owner and a.object_name = s.object_name and a.object_type = 'PACKAGE' )
              and exists ( select 1 from all_objects a where a.owner = r.object_owner and a.object_name = r.object_name and a.object_type = 'PACKAGE' )
            );
+    return l_results;
+  end;
+
+  function get_test_case_filters(
+    a_schema_paths ut_path_items
+  ) return ut_key_value_pairs is
+    l_results ut_key_value_pairs;
+  begin
+    with
+      path_items as (
+        select rownum as path_id, sp.schema_name, sp.object_name, sp.procedure_name, sp.suite_path
+          from table(a_schema_paths) sp
+      ),
+      schema_items as (
+        select /*+ no_parallel */ c.object_owner, c.object_name, c.name, c.path,
+               case when c.item.call_source is not null then 'Y' end as has_test_case_source
+          from &&ut3_owner..ut_suite_cache c
+         where c.object_owner in (select upper(p.schema_name) from path_items p)
+           and c.item.call_source is not null
+      )
+    --the selected test case numbers of the tests that no path selects as a whole
+    select /*+ no_parallel */ &&ut3_owner..ut_key_value_pair(f.object_owner || ':' || f.path, to_char(f.test_case_no))
+      bulk collect into l_results
+      from (
+        select distinct m.object_owner, m.path, m.test_case_no,
+               count(case when m.test_case_no is null then 1 end) over (partition by m.object_owner, m.path) as whole_test_paths
+          from (&&ut3_owner..ut_suite_cache_macros.match_paths(schema_items, path_items)) m
+      ) f
+     where f.whole_test_paths = 0;
     return l_results;
   end;
 

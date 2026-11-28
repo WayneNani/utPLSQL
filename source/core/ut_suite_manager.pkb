@@ -300,7 +300,8 @@ create or replace noneditionable package body ut_suite_manager is
             from table(a_schema_paths) sp
         ),
         suite_items as (
-          select r.object_owner, r.object_name, r.name, r.path
+          select r.object_owner, r.object_name, r.name, r.path,
+                 case when r.item.call_source is not null then 'Y' end as has_test_case_source
             from table(a_suite_rows) r
         )
       select /*+ no_parallel */ p.schema_name, p.object_name, p.procedure_name, p.suite_path
@@ -503,7 +504,8 @@ create or replace noneditionable package body ut_suite_manager is
     a_random_seed positive   := null,
     a_tags        varchar2 := null
   ) is
-    l_tags_match  integer;
+    l_tags_match   integer;
+    l_schema_paths ut_path_items;
   begin
     ut_event_manager.trigger_event('configure_execution_by_path - start');
     --raise an error for an invalid tag expression even when the paths select no tests to evaluate it on
@@ -511,13 +513,15 @@ create or replace noneditionable package body ut_suite_manager is
       l_tags_match := ut_suite_tag_filter.is_matching(null, a_tags);
     end if;
     a_suites := ut_suite_items();
+    l_schema_paths := refresh_cache_for_paths(a_paths);
 
     add_suites_for_paths(
-      refresh_cache_for_paths(a_paths),
+      l_schema_paths,
       a_suites,
       a_random_seed,
       a_tags
     );
+    ut_test_case_values.set_case_filters(ut_suite_cache_manager.get_test_case_filters(l_schema_paths));
 
     ut_event_manager.trigger_event('configure_execution_by_path - end');
   end configure_execution_by_path;

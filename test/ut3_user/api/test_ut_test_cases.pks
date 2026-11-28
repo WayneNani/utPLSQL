@@ -16,9 +16,6 @@ create or replace package test_ut_test_cases is
     --%test(Runs test cases returned as json_array_t)
     procedure discount_json_source;
 
-    --%test(Runs test cases returned as cursor)
-    procedure discount_cursor_source;
-
     --%test(Gives the same results when NLS settings and session time zone differ)
     procedure discount_independent_of_nls;
 
@@ -63,8 +60,20 @@ create or replace package test_ut_test_cases is
     --%test(Reports JSON test cases of overloaded procedures as errored)
     procedure testcase_json_overloaded;
 
-    --%test(Skips a test case that is no JSON array or object with a warning)
+    --%test(Reports a test case that is no JSON array or object as errored)
     procedure testcase_not_json;
+
+    --%test(Ignores values and keys beyond the parameters)
+    procedure testcase_extra_values;
+
+    --%test(Runs identical test cases each)
+    procedure testcase_duplicates;
+
+    --%test(Appends the values when a placeholder refers to no value)
+    procedure testcase_unknown_placeholder;
+
+    --%test(Passes keys and values with quotes and SQL as data, never as code)
+    procedure testcase_injection;
 
     --%test(Reports test cases whose arguments don't fit the parameters as errored and runs the others)
     procedure testcase_arguments_dont_fit;
@@ -72,7 +81,7 @@ create or replace package test_ut_test_cases is
     --%test(Converts JSON values to BINARY_DOUBLE, NVARCHAR2, intervals, RAW and CLOB)
     procedure testcase_json_more_types;
 
-    --%test(Runs empty JSON arrays and objects for procedures without parameters)
+    --%test(Reports test cases of a procedure without parameters as errored)
     procedure testcase_without_parameters;
 
     --%test(Reports a JSON test case for a PL/SQL record parameter as errored, naming the type)
@@ -97,10 +106,10 @@ create or replace package test_ut_test_cases is
     --%test(Gives a warning for an empty array, null and json_arrayagg over no rows with nvl)
     procedure source_json_no_test_cases;
 
-    --%test(Reports the test as errored when the function doesn't return a JSON array of arrays and objects)
+    --%test(Reports the test as errored when the function doesn't return a JSON array, and an element that is no array or object as errored test case)
     procedure source_json_invalid_result;
 
-    --%test(Reports the test as errored when the function doesn't exist, fails or returns another type than json_array_t or sys_refcursor)
+    --%test(Reports the test as errored when the function doesn't exist, fails or returns another type than json_array_t)
     procedure source_function_errors;
 
     --%test(Doesn't call the function of a disabled test)
@@ -118,66 +127,28 @@ create or replace package test_ut_test_cases is
     --%test(Reports JSON test cases of an overloaded procedure as errored)
     procedure source_json_overloaded;
 
-  --%endcontext
+    --%test(Reports test cases of a procedure without parameters as errored)
+    procedure source_without_parameters;
 
-  --%context(--%testcasesource returning a cursor)
+    --%test(Uses one source for tests with different parameters)
+    procedure source_shared;
 
-    --%test(Passes columns by name, with sysdate, constants and object types, and uses other columns in the description)
-    procedure source_cursor_by_name;
+    --%test(Runs single test cases given by path, and all when the test is also given as a whole)
+    procedure source_single_case_by_path;
 
-    --%test(Passes columns by position when no column is named like a parameter)
-    procedure source_cursor_by_position;
+    --%test(Gives a warning for a test case number beyond the test cases the function returned)
+    procedure source_case_number_too_high;
 
-    --%test(Passes the rows fetched before the first test case even when they are deleted)
-    procedure source_cursor_snapshot;
-
-    --%test(Gives a warning when the cursor returns no rows)
-    procedure source_cursor_no_rows;
-
-    --%test(Reports the test as errored when a column has a type that can't be passed)
-    procedure source_cursor_unsupported_column;
-
-    --%test(Reports the test as errored when a column doesn't fit its parameter)
-    procedure source_cursor_column_doesnt_fit;
-
-    --%test(Runs many test cases)
-    procedure source_cursor_many_rows;
-
-    --%test(Passes columns of all supported types and shows them in the description)
-    procedure source_cursor_types;
-
-    --%test(Reports the test as errored when the cursor has more columns than can be passed)
-    procedure source_cursor_too_many_columns;
-
-    --%test(Reports the test as errored when no column is named like a parameter and the number of columns doesn't match)
-    procedure source_cursor_position_count;
-
-    --%test(Reports the test as errored when a column is no parameter and isn't used in the description)
-    procedure source_cursor_misspelled_column;
-
-    --%test(Reports the test as errored when a parameter without default has no column)
-    procedure source_cursor_missing_column;
-
-    --%test(Reports the test as errored when two columns are named like the same parameter)
-    procedure source_cursor_duplicate_column;
-
-    --%test(Matches column names to parameters not case-sensitive and uses defaults of parameters without column)
-    procedure source_cursor_lower_case_column;
-
-    --%test(Reports the test as errored when the test procedure is overloaded)
-    procedure source_cursor_overloaded;
-
-    $if dbms_db_version.version >= 23 $then
-    --%test(Passes BOOLEAN columns)
-    procedure source_cursor_booleans;
-    $end
+    --%test(Raises an error for a test case number of a test without test cases)
+    --%throws(ut3_develop.ut_utils.gc_suite_package_not_found)
+    procedure source_case_number_on_plain_test;
 
   --%endcontext
 
   --%context(dates and times)
 
-    --%test(Converts date and time strings of JSON like the values of a cursor)
-    procedure times_json_and_cursor_alike;
+    --%test(Converts date and time strings independent of NLS settings and session time zone)
+    procedure times_json;
 
     --%test(Converts dates without time)
     procedure times_date_only;

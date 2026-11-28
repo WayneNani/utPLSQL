@@ -404,8 +404,6 @@ drop type ut_varchar2_list force;
 
 drop type ut_varchar2_rows force;
 
-drop type ut_anydata_list force;
-
 drop package ut_coverage_profiler;
 
 drop package ut_compound_data_helper;

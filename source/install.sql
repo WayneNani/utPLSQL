@@ -45,7 +45,6 @@ create or replace context &&ut3_owner._info using &&ut3_owner..ut_session_contex
 -- spec
 @@install_component.sql 'core/types/ut_varchar2_list.tps'
 @@install_component.sql 'core/types/ut_varchar2_rows.tps'
-@@install_component.sql 'core/types/ut_anydata_list.tps'
 @@install_component.sql 'core/types/ut_integer_list.tps'
 @@install_component.sql 'core/types/ut_object_name.tps'
 @@install_component.sql 'core/types/ut_object_names.tps'

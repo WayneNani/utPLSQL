@@ -201,19 +201,16 @@ create or replace package test_suite_builder is
 
   --%endcontext
 
-  --%context(test case argument checks)
+  --%context(test case arguments)
 
       --%beforeall(create_test_case_args_package)
       --%afterall(drop_test_case_args_package)
 
-      --%test(Gives a warning for each test case with invalid or no JSON arguments and skips it)
-      procedure testcase_invalid_arguments;
+      --%test(Creates a test for each test case, also an invalid one, and gives a warning for an empty annotation)
+      procedure testcase_every_case_is_a_test;
 
-      --%test(Checks JSON test case arguments and fills in the description)
+      --%test(Fills in the description, by position and by name, ignoring extra values and keys)
       procedure testcase_json_arguments;
-
-      --%test(Accepts arguments that fit one of the overloads, including an overload without parameters)
-      procedure testcase_overloads;
 
   --%endcontext
 

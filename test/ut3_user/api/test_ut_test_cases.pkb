@@ -49,9 +49,6 @@ end;~', '<name>', a_name), '<body>', a_body);
 
   procedure create_test_case_suites is
     pragma autonomous_transaction;
-    l_boolean_spec varchar2(4000);
-    l_boolean_body varchar2(4000);
-    l_wide_parameters varchar2(4000);
   begin
     execute immediate 'create or replace type test_case_pair force as object (amount number, half number)';
     execute immediate 'create or replace type test_case_numbers force as table of number';
@@ -115,46 +112,6 @@ end;~';
         }
       ]
     ]');
-  end;~'
-    );
-    create_discount_suite(
-      'tc_discount_cursor',
-      '  --%testcasesource(discount_cases)',
-      '  function discount_cases return sys_refcursor;',
-      q'~
-  function discount_cases return sys_refcursor is
-    l_cursor sys_refcursor;
-  begin
-    open l_cursor for
-      select 500                                                                                  as a_order_total,
-             'REGULAR'                                                                            as a_customer_type,
-             to_date('2026-03-15 14:30:00', 'yyyy-mm-dd hh24:mi:ss')                              as a_order_date,
-             to_timestamp('2026-03-01 00:00:00.000000', 'yyyy-mm-dd hh24:mi:ss.ff')               as a_promo_start,
-             to_timestamp_tz('2026-03-31 23:59:59.999999 +02:00', 'yyyy-mm-dd hh24:mi:ss.ff tzh:tzm') as a_promo_end,
-             0.05                                                                                 as a_expected
-        from dual
-      union all
-      select 1000, 'REGULAR',
-             to_date('2026-04-01 09:00:00', 'yyyy-mm-dd hh24:mi:ss'),
-             to_timestamp('2026-03-01 00:00:00.000000', 'yyyy-mm-dd hh24:mi:ss.ff'),
-             to_timestamp_tz('2026-03-31 23:59:59.999999 +02:00', 'yyyy-mm-dd hh24:mi:ss.ff tzh:tzm'),
-             0.1
-        from dual
-      union all
-      select 50, 'VIP',
-             to_date('2026-03-20 10:00:00', 'yyyy-mm-dd hh24:mi:ss'),
-             to_timestamp('2026-03-01 00:00:00.000000', 'yyyy-mm-dd hh24:mi:ss.ff'),
-             to_timestamp_tz('2026-03-31 23:59:59.999999 -05:00', 'yyyy-mm-dd hh24:mi:ss.ff tzh:tzm'),
-             0.25
-        from dual
-      union all
-      select null, 'REGULAR',
-             to_date('2026-02-28 23:59:59', 'yyyy-mm-dd hh24:mi:ss'),
-             to_timestamp('2026-03-01 00:00:00.000000', 'yyyy-mm-dd hh24:mi:ss.ff'),
-             to_timestamp_tz('2026-03-31 23:59:59.999999 +02:00', 'yyyy-mm-dd hh24:mi:ss.ff tzh:tzm'),
-             0
-        from dual;
-    return l_cursor;
   end;~'
     );
 
@@ -222,13 +179,38 @@ end;~';
   --%testcase([1, 2])
   procedure not_json(a_first number, a_second number);
 
+  --%test(Half of {a_amount} is {a_half})
+  --%testcase([8, 4, "extra"])
+  --%testcase({"a_amount": 6, "a_half": 3, "note": "six", "a_amount2": 1})
+  procedure extras(a_amount number, a_half number);
+
+  --%test(Duplicate {a_value})
+  --%testcase([1])
+  --%testcase([1])
+  procedure duplicates(a_value number);
+
+  --%test(Not existing {reference})
+  --%testcase([4, 2])
+  procedure unknown_placeholder(a_amount number, a_half number);
+
+  --%test(Injection {1})
+  --%testcase({"a_text": "'); delete from test_case_rows; --", "a_text'); delete from test_case_rows; --": 1})
+  --%testcase(["x' || 'y"])
+  --%testcase({"A_TEXT\"); delete from test_case_rows; --": 1, "a_text": "z"})
+  procedure injection(a_text varchar2);
+
+  --%test(Quoted parameter {1})
+  --%testcase({"a'B": 1})
+  --%testcase([1])
+  procedure quoted_parameter("a'B" number);
+
   --%test(More types)
   --%testcase([1.5, "n\u00e4", "P1DT2H", "P1Y2M", "0AFF", "long text"])
   procedure more_types(a_double binary_double, a_national nvarchar2, a_ds interval day to second, a_ym interval year to month, a_raw raw, a_clob clob);
 
   --%test(No parameters)
   --%testcase([])
-  --%testcase({})
+  --%testcase([1])
   procedure no_parameters;
 
   type t_record is record (a number);
@@ -301,6 +283,27 @@ end;~';
   procedure arguments_dont_fit(a_pair test_case_pair) is
   begin
     ut3_develop.ut.expect(a_pair.amount).to_equal(1);
+  end;
+  procedure extras(a_amount number, a_half number) is
+  begin
+    ut3_develop.ut.expect(a_amount / 2).to_equal(a_half);
+  end;
+  procedure duplicates(a_value number) is
+  begin
+    ut3_develop.ut.expect(a_value).to_equal(1);
+  end;
+  procedure unknown_placeholder(a_amount number, a_half number) is
+  begin
+    ut3_develop.ut.expect(a_amount / 2).to_equal(a_half);
+  end;
+  procedure injection(a_text varchar2) is
+  begin
+    ut3_develop.ut.expect(a_text).to_be_not_null();
+    ut3_develop.ut.expect(a_text in ('''); delete from test_case_rows; --', 'x'' || ''y', 'z')).to_be_true();
+  end;
+  procedure quoted_parameter("a'B" number) is
+  begin
+    ut3_develop.ut.expect("a'B").to_equal(1);
   end;
   procedure more_types(a_double binary_double, a_national nvarchar2, a_ds interval day to second, a_ym interval year to month, a_raw raw, a_clob clob) is
   begin
@@ -446,6 +449,17 @@ end;~';
   --%testcasesource(get_one)
   procedure overloaded(a_value number);
   procedure overloaded(a_value varchar2, a_other number);
+
+  --%test(No parameters)
+  --%testcasesource(get_one)
+  procedure no_parameters;
+
+  --%test(Shared source: amount {a_amount})
+  --%testcasesource(tc_sources.get_cases)
+  procedure shared_source(a_amount number);
+
+  --%test(Plain)
+  procedure plain;
 end;~';
     execute immediate q'~create or replace package body tc_json_source as
   procedure fill_rows is
@@ -624,317 +638,19 @@ end;~';
   begin
     null;
   end;
+  procedure no_parameters is
+  begin
+    null;
+  end;
+  procedure shared_source(a_amount number) is
+  begin
+    ut3_develop.ut.expect(a_amount).to_be_between(4, 10);
+  end;
+  procedure plain is
+  begin
+    null;
+  end;
 end;~';
-
-    $if dbms_db_version.version >= 23 $then
-    l_boolean_spec := q'~
-  --%test(Flag {a_flag} is {a_label})
-  --%testcasesource(get_booleans)
-  procedure booleans(a_flag boolean, a_label varchar2);
-  function get_booleans return sys_refcursor;~';
-    l_boolean_body := q'~
-  procedure booleans(a_flag boolean, a_label varchar2) is
-  begin
-    ut3_develop.ut.expect(case when a_flag then 'yes' when not a_flag then 'no' else 'null' end).to_equal(a_label);
-  end;
-  function get_booleans return sys_refcursor is
-    l_cursor sys_refcursor;
-  begin
-    open l_cursor for
-      select true a_flag, 'yes' a_label from dual union all
-      select false, 'no' from dual union all
-      select cast(null as boolean), 'null' from dual;
-    return l_cursor;
-  end;~';
-    $end
-    -- named arguments for 200 parameters are longer than the arguments of a test can be
-    for i in 1 .. 200 loop
-      l_wide_parameters := l_wide_parameters || case when i > 1 then ', ' end || 'c' || i || ' number';
-    end loop;
-    execute immediate replace(q'~create or replace package tc_cursor_source as
-  --%suite(Cursor sources)
-  --%beforeall(fill_rows)
-
-  c_limit constant number := 100;
-  procedure fill_rows;
-  procedure delete_rows;
-
-  --%test(Cursor case {label} with limit {a_limit})
-  --%testcasesource(get_by_name)
-  procedure by_name(a_day date, a_limit number, a_pair test_case_pair);
-  function get_by_name return sys_refcursor;
-
-  --%test(Position: half of {1} is {2})
-  --%testcasesource(get_by_position)
-  procedure by_position(a_amount number, a_half number);
-  function get_by_position return sys_refcursor;
-
-  --%test(Snapshot: half of {a_amount} is {a_half})
-  --%testcasesource(get_rows)
-  --%beforetest(delete_rows)
-  procedure snapshot(a_amount number, a_half number);
-  function get_rows return sys_refcursor;
-
-  --%test(No rows)
-  --%testcasesource(get_no_rows)
-  procedure no_rows(a_value number);
-  function get_no_rows return sys_refcursor;
-
-  --%test(Unsupported column)
-  --%testcasesource(get_xml)
-  procedure unsupported_column(a_xml clob);
-  function get_xml return sys_refcursor;
-
-  --%test(Column that doesn't fit)
-  --%testcasesource(get_wrong_column)
-  procedure column_doesnt_fit(a_pair test_case_pair);
-  function get_wrong_column return sys_refcursor;
-
-  --%test(Many rows)
-  --%testcasesource(get_many)
-  procedure many_rows(a_value number);
-  function get_many return sys_refcursor;
-
-  --%test(Cursor types)
-  --%testcasesource(get_types)
-  procedure types(
-    a_char char, a_nchar nchar, a_nvarchar nvarchar2, a_float binary_float, a_double binary_double,
-    a_ltz timestamp with local time zone, a_ds interval day to second, a_ym interval year to month,
-    a_clob clob, a_nclob nclob, a_blob blob, a_raw raw, a_numbers test_case_numbers
-  );
-  function get_types return sys_refcursor;
-
-  --%test(Too many columns)
-  --%testcasesource(get_wide)
-  procedure too_many_columns(<wide_parameters>);
-  function get_wide return sys_refcursor;
-
-  --%test(Position count)
-  --%testcasesource(get_three)
-  procedure position_count(a_amount number, a_half number);
-  function get_three return sys_refcursor;
-
-  --%test(Misspelled column)
-  --%testcasesource(get_misspelled)
-  procedure misspelled_column(a_amount number, a_half number := 0);
-  function get_misspelled return sys_refcursor;
-
-  --%test(Missing column)
-  --%testcasesource(get_amount)
-  procedure missing_column(a_amount number, a_half number);
-  function get_amount return sys_refcursor;
-
-  --%test(Duplicate column)
-  --%testcasesource(get_duplicate)
-  procedure duplicate_column(a_amount number);
-  function get_duplicate return sys_refcursor;
-
-  --%test(Lower case {a_amount})
-  --%testcasesource(get_lower_case)
-  procedure lower_case_column(a_amount number, a_half number := 2);
-  function get_lower_case return sys_refcursor;
-
-  --%test(Overloaded)
-  --%testcasesource(get_amount)
-  procedure overloaded(a_amount number);
-  procedure overloaded(a_amount varchar2, a_other number);
-~' || l_boolean_spec || q'~
-end;~', '<wide_parameters>', l_wide_parameters);
-    execute immediate replace(q'~create or replace package body tc_cursor_source as
-  procedure fill_rows is
-  begin
-    insert into test_case_rows values (10, 5);
-    insert into test_case_rows values (3, 2);
-    insert into test_case_rows values (4, 2);
-  end;
-  procedure delete_rows is
-  begin
-    delete from test_case_rows;
-  end;
-  procedure by_name(a_day date, a_limit number, a_pair test_case_pair) is
-  begin
-    ut3_develop.ut.expect(a_day).to_be_between(trunc(sysdate), trunc(sysdate) + 1);
-    ut3_develop.ut.expect(a_limit).to_be_greater_or_equal(c_limit);
-    ut3_develop.ut.expect(a_pair.amount / 2).to_equal(a_pair.half);
-  end;
-  function get_by_name return sys_refcursor is
-    l_cursor sys_refcursor;
-  begin
-    open l_cursor for
-      select 'today' label, trunc(sysdate) a_day, c_limit a_limit, test_case_pair(8, 4) a_pair from dual
-      union all
-      select 'tomorrow', trunc(sysdate) + 1, c_limit * 2, test_case_pair(6, 3) from dual
-      order by 1;
-    return l_cursor;
-  end;
-  procedure by_position(a_amount number, a_half number) is
-  begin
-    ut3_develop.ut.expect(a_amount / 2).to_equal(a_half);
-  end;
-  function get_by_position return sys_refcursor is
-    l_cursor sys_refcursor;
-  begin
-    open l_cursor for select 4 x, 2 y from dual union all select 10, 5 from dual;
-    return l_cursor;
-  end;
-  procedure snapshot(a_amount number, a_half number) is
-  begin
-    ut3_develop.ut.expect(a_amount).to_be_not_null();
-    ut3_develop.ut.expect(a_half).to_be_not_null();
-  end;
-  function get_rows return sys_refcursor is
-    l_cursor sys_refcursor;
-  begin
-    open l_cursor for select a_amount, a_half from test_case_rows order by a_amount;
-    return l_cursor;
-  end;
-  procedure no_rows(a_value number) is
-  begin
-    null;
-  end;
-  function get_no_rows return sys_refcursor is
-    l_cursor sys_refcursor;
-  begin
-    open l_cursor for select 1 a_value from dual where 1 = 0;
-    return l_cursor;
-  end;
-  procedure unsupported_column(a_xml clob) is
-  begin
-    null;
-  end;
-  function get_xml return sys_refcursor is
-    l_cursor sys_refcursor;
-  begin
-    open l_cursor for select xmltype('<a/>') a_xml from dual;
-    return l_cursor;
-  end;
-  procedure column_doesnt_fit(a_pair test_case_pair) is
-  begin
-    null;
-  end;
-  function get_wrong_column return sys_refcursor is
-    l_cursor sys_refcursor;
-  begin
-    open l_cursor for select 1 a_pair from dual;
-    return l_cursor;
-  end;
-  procedure many_rows(a_value number) is
-  begin
-    ut3_develop.ut.expect(a_value).to_be_between(1, 300);
-  end;
-  function get_many return sys_refcursor is
-    l_cursor sys_refcursor;
-  begin
-    open l_cursor for select level a_value from dual connect by level <= 300;
-    return l_cursor;
-  end;
-  procedure types(
-    a_char char, a_nchar nchar, a_nvarchar nvarchar2, a_float binary_float, a_double binary_double,
-    a_ltz timestamp with local time zone, a_ds interval day to second, a_ym interval year to month,
-    a_clob clob, a_nclob nclob, a_blob blob, a_raw raw, a_numbers test_case_numbers
-  ) is
-  begin
-    ut3_develop.ut.expect(a_char).to_equal('a  ');
-    ut3_develop.ut.expect(a_nchar = n'b ').to_be_true();
-    ut3_develop.ut.expect(a_nvarchar = n'c').to_be_true();
-    ut3_develop.ut.expect(a_float = 1.5f).to_be_true();
-    ut3_develop.ut.expect(a_double = 2.5d).to_be_true();
-    ut3_develop.ut.expect(cast(a_ltz as timestamp)).to_equal(timestamp '2026-03-31 12:00:00');
-    ut3_develop.ut.expect(a_ds).to_equal(interval '1 02:00:00' day to second);
-    ut3_develop.ut.expect(a_ym).to_equal(interval '1-2' year to month);
-    ut3_develop.ut.expect(a_clob).to_equal(to_clob('long'));
-    ut3_develop.ut.expect(to_clob(a_nclob)).to_equal(to_clob('nlong'));
-    ut3_develop.ut.expect(a_blob).to_equal(to_blob(hextoraw('0AFF')));
-    ut3_develop.ut.expect(rawtohex(a_raw)).to_equal('0BEE');
-    ut3_develop.ut.expect(a_numbers.count).to_equal(2);
-  end;
-  function get_types return sys_refcursor is
-    l_cursor sys_refcursor;
-  begin
-    open l_cursor for
-      select cast('a' as char(3)) a_char, cast(n'b' as nchar(2)) a_nchar, cast(n'c' as nvarchar2(10)) a_nvarchar,
-             cast(1.5 as binary_float) a_float, cast(2.5 as binary_double) a_double,
-             cast(timestamp '2026-03-31 12:00:00' as timestamp with local time zone) a_ltz,
-             interval '1 02:00:00' day to second a_ds, interval '1-2' year to month a_ym,
-             to_clob('long') a_clob, to_nclob('nlong') a_nclob, to_blob(hextoraw('0AFF')) a_blob, hextoraw('0BEE') a_raw,
-             test_case_numbers(1, 2) a_numbers
-        from dual;
-    return l_cursor;
-  end;
-  procedure too_many_columns(<wide_parameters>) is
-  begin
-    null;
-  end;
-  function get_wide return sys_refcursor is
-    l_cursor sys_refcursor;
-    l_select varchar2(32767);
-  begin
-    for i in 1 .. 200 loop
-      l_select := l_select || case when i > 1 then ', ' end || i || ' c' || i;
-    end loop;
-    open l_cursor for 'select ' || l_select || ' from dual';
-    return l_cursor;
-  end;
-  procedure position_count(a_amount number, a_half number) is
-  begin
-    null;
-  end;
-  function get_three return sys_refcursor is
-    l_cursor sys_refcursor;
-  begin
-    open l_cursor for select 4 x, 2 y, 0 z from dual;
-    return l_cursor;
-  end;
-  procedure misspelled_column(a_amount number, a_half number := 0) is
-  begin
-    null;
-  end;
-  function get_misspelled return sys_refcursor is
-    l_cursor sys_refcursor;
-  begin
-    open l_cursor for select 4 a_amount, 2 a_halv from dual;
-    return l_cursor;
-  end;
-  procedure missing_column(a_amount number, a_half number) is
-  begin
-    null;
-  end;
-  function get_amount return sys_refcursor is
-    l_cursor sys_refcursor;
-  begin
-    open l_cursor for select 4 a_amount from dual;
-    return l_cursor;
-  end;
-  procedure duplicate_column(a_amount number) is
-  begin
-    null;
-  end;
-  function get_duplicate return sys_refcursor is
-    l_cursor sys_refcursor;
-  begin
-    open l_cursor for select 4 a_amount, 5 "a_amount" from dual;
-    return l_cursor;
-  end;
-  procedure lower_case_column(a_amount number, a_half number := 2) is
-  begin
-    ut3_develop.ut.expect(a_amount / 2).to_equal(a_half);
-  end;
-  function get_lower_case return sys_refcursor is
-    l_cursor sys_refcursor;
-  begin
-    open l_cursor for select 4 "a_amount" from dual;
-    return l_cursor;
-  end;
-  procedure overloaded(a_amount number) is
-  begin
-    null;
-  end;
-  procedure overloaded(a_amount varchar2, a_other number) is
-  begin
-    null;
-  end;
-~' || l_boolean_body || q'~
-end;~', '<wide_parameters>', l_wide_parameters);
 
     execute immediate q'~create or replace package tc_times as
   --%suite(Dates and times)
@@ -943,11 +659,6 @@ end;~', '<wide_parameters>', l_wide_parameters);
   --%testcase(["2026-03-31T12:00:00-05:00", "2026-03-31T12:00:00.123456", "2026-03-31T12:00:00", "2026-03-31T12:00:00Z"])
   --%testcase({"a_date": "2026-03-31T12:00:00 -05:00", "a_ts": "2026-03-31T12:00:00.123456", "a_tz": "2026-03-31T12:00:00", "a_ltz": "2026-03-31T12:00:00Z"})
   procedure json_strings(a_date date, a_ts timestamp, a_tz timestamp with time zone, a_ltz timestamp with local time zone);
-
-  --%test(Cursor)
-  --%testcasesource(get_times)
-  procedure cursor_values(a_date date, a_ts timestamp, a_tz timestamp with time zone, a_ltz timestamp with local time zone);
-  function get_times return sys_refcursor;
 
   --%test(Date only {1})
   --%testcase(["2026-03-15", "2026-03-15"])
@@ -975,21 +686,6 @@ end;~';
   begin
     check_values(a_date, a_ts, a_tz, a_ltz);
   end;
-  procedure cursor_values(a_date date, a_ts timestamp, a_tz timestamp with time zone, a_ltz timestamp with local time zone) is
-  begin
-    check_values(a_date, a_ts, a_tz, a_ltz);
-  end;
-  function get_times return sys_refcursor is
-    l_cursor sys_refcursor;
-  begin
-    open l_cursor for
-      select to_timestamp_tz('2026-03-31 12:00:00 -05:00', 'yyyy-mm-dd hh24:mi:ss tzh:tzm') a_date,
-             to_timestamp('2026-03-31 12:00:00.123456', 'yyyy-mm-dd hh24:mi:ss.ff6') a_ts,
-             cast(timestamp '2026-03-31 12:00:00' as timestamp with time zone) a_tz,
-             to_timestamp_tz('2026-03-31 12:00:00 +00:00', 'yyyy-mm-dd hh24:mi:ss tzh:tzm') a_ltz
-        from dual;
-    return l_cursor;
-  end;
   procedure date_only(a_date date, a_ts timestamp) is
   begin
     ut3_develop.ut.expect(to_char(a_date, 'yyyy-mm-dd hh24:mi:ss')).to_equal('2026-03-15 00:00:00');
@@ -1009,8 +705,7 @@ end;~';
       select object_name, object_type
         from user_objects
        where object_name in (
-               'TC_DISCOUNT_PLSQL', 'TC_DISCOUNT_JSON', 'TC_DISCOUNT_SOURCE', 'TC_DISCOUNT_CURSOR',
-               'TC_INLINE', 'TC_SOURCES', 'TC_JSON_SOURCE', 'TC_CURSOR_SOURCE', 'TC_TIMES', 'GET_DISCOUNT'
+               'TC_DISCOUNT_JSON', 'TC_DISCOUNT_SOURCE', 'TC_INLINE', 'TC_SOURCES', 'TC_JSON_SOURCE', 'TC_TIMES', 'GET_DISCOUNT'
              )
          and object_type in ('PACKAGE', 'FUNCTION')
     ) loop
@@ -1051,6 +746,13 @@ end;~';
     return ut3_tester_helper.main_helper.table_to_clob(l_results);
   end;
 
+  function run_report(a_paths ut3_develop.ut_varchar2_list) return clob is
+    l_results ut3_develop.ut_varchar2_list;
+  begin
+    select * bulk collect into l_results from table(ut3_develop.ut.run(a_paths));
+    return ut3_tester_helper.main_helper.table_to_clob(l_results);
+  end;
+
   -- the lines of the report that start with a_prefix, without execution times
   function report_lines(a_path varchar2, a_prefix varchar2) return varchar2 is
     l_results ut3_develop.ut_varchar2_list;
@@ -1078,12 +780,6 @@ end;~';
     ut.expect(run_report('tc_discount_source')).to_be_like('%4 tests, 0 failed, 0 errored, 0 disabled, 0 warning(s)%');
   end;
 
-  procedure discount_cursor_source is
-  begin
-    ut.expect(report_lines('tc_discount_cursor', 'Discount for')).to_equal(c_discount_cases);
-    ut.expect(run_report('tc_discount_cursor')).to_be_like('%4 tests, 0 failed, 0 errored, 0 disabled, 0 warning(s)%');
-  end;
-
   procedure discount_independent_of_nls is
     l_lines varchar2(32767);
   begin
@@ -1091,7 +787,7 @@ end;~';
     for r in (
       select column_value suite
         from table(ut3_develop.ut_varchar2_list(
-               'tc_discount_json', 'tc_discount_source', 'tc_discount_cursor'
+               'tc_discount_json', 'tc_discount_source'
              ))
     ) loop
       l_lines := report_lines(r.suite, 'Discount for');
@@ -1208,8 +904,9 @@ end;~';
   procedure testcase_not_json is
   begin
     ut.expect(run_report('tc_inline.not_json')).to_be_like(
-      '%Not JSON (1, 2) [%Annotation "--%testcase" has invalid arguments: a JSON array or object is expected. Annotation ignored.%' ||
-      '1 tests, 0 failed, 0 errored, 0 disabled, 1 warning(s)%'
+      '%Not JSON (1, 2) [%Not JSON (1, 2) [%' ||
+      'not_json[1]%Invalid JSON test case: a JSON array or object is expected.%' ||
+      '2 tests, 0 failed, 1 errored, 0 disabled, 0 warning(s)%'
     );
   end;
 
@@ -1219,6 +916,36 @@ end;~';
       '%arguments_dont_fit[2]%Invalid JSON test case: a JSON object expected instead of 1.%' ||
       'arguments_dont_fit[3]%ORA-40603%3 tests, 0 failed, 2 errored%'
     );
+  end;
+
+  procedure testcase_extra_values is
+  begin
+    ut.expect(report_lines('tc_inline.extras', 'Half of')).to_equal(
+      'Half of 8 is 4' || chr(10) ||
+      'Half of 6 is 3'
+    );
+    ut.expect(run_report('tc_inline.extras')).to_be_like('%2 tests, 0 failed, 0 errored, 0 disabled, 0 warning(s)%');
+  end;
+
+  procedure testcase_duplicates is
+  begin
+    ut.expect(run_report('tc_inline.duplicates')).to_be_like('%Duplicate 1 [%Duplicate 1 [%2 tests, 0 failed, 0 errored%');
+  end;
+
+  procedure testcase_unknown_placeholder is
+  begin
+    ut.expect(report_lines('tc_inline.unknown_placeholder', 'Not existing')).to_equal('Not existing {reference} (4, 2)');
+  end;
+
+  procedure testcase_injection is
+    l_count integer;
+  begin
+    -- the table is created by the beforeall, so it is accessed with dynamic SQL
+    execute immediate 'insert into test_case_rows values (1, 1)';
+    ut.expect(run_report('tc_inline.injection')).to_be_like('%3 tests, 0 failed, 0 errored%');
+    ut.expect(run_report('tc_inline.quoted_parameter')).to_be_like('%2 tests, 0 failed, 0 errored%');
+    execute immediate 'select count(*) from test_case_rows' into l_count;
+    ut.expect(l_count).to_equal(1);
   end;
 
   procedure source_json_after_beforeall is
@@ -1260,8 +987,8 @@ end;~';
       '%The --%testcasesource function failed.%ORA-40587%1 tests, 0 failed, 1 errored%'
     );
     ut.expect(run_report('tc_json_source.scalar_element')).to_be_like(
-      '%The --%testcasesource function get_scalar returned element 2, which is neither a JSON array nor a JSON object.%' ||
-      '1 tests, 0 failed, 1 errored%'
+      '%Scalar element (1) [%Scalar element (2) [%' ||
+      'scalar_element[2]%Invalid JSON test case: a JSON array or object is expected.%2 tests, 0 failed, 1 errored%'
     );
     ut.expect(run_report('tc_json_source.invalid_json')).to_be_like(
       '%The --%testcasesource function failed.%ORA-40441%1 tests, 0 failed, 1 errored%'
@@ -1271,10 +998,10 @@ end;~';
   procedure source_function_errors is
   begin
     ut.expect(run_report('tc_json_source.wrong_return_type')).to_be_like(
-      '%The --%testcasesource function get_number must return json_array_t or sys_refcursor, not NUMBER.%1 tests, 0 failed, 1 errored%'
+      '%The --%testcasesource function get_number must return json_array_t, not NUMBER.%1 tests, 0 failed, 1 errored%'
     );
     ut.expect(run_report('tc_json_source.json_as_text')).to_be_like(
-      '%The --%testcasesource function get_clob must return json_array_t or sys_refcursor, not CLOB.%1 tests, 0 failed, 1 errored%'
+      '%The --%testcasesource function get_clob must return json_array_t, not CLOB.%1 tests, 0 failed, 1 errored%'
     );
     ut.expect(run_report('tc_json_source.missing_function')).to_be_like(
       '%The --%testcasesource function get_nothing doesn''t exist or can''t be called without arguments.%1 tests, 0 failed, 1 errored%'
@@ -1296,7 +1023,10 @@ end;~';
 
   procedure testcase_without_parameters is
   begin
-    ut.expect(run_report('tc_inline.no_parameters')).to_be_like('%2 tests, 0 failed, 0 errored%');
+    ut.expect(run_report('tc_inline.no_parameters')).to_be_like(
+      '%no_parameters[1]%Invalid JSON test case: the procedure NO_PARAMETERS has no parameters, so it can''t be run with test cases.%' ||
+      'no_parameters[2]%Invalid JSON test case: the procedure NO_PARAMETERS has no parameters%2 tests, 0 failed, 2 errored%'
+    );
   end;
 
   procedure testcase_json_record_parameter is
@@ -1326,71 +1056,61 @@ end;~';
     );
   end;
 
-  procedure source_cursor_types is
-  begin
-    ut.expect(run_report('tc_cursor_source.types')).to_be_like(
-      '%Cursor types (a  , b , c, 1.5, 2.5, %, long, nlong, <value>, 0BEE, <%TEST_CASE_NUMBERS>) [%1 tests, 0 failed, 0 errored%'
-    );
-  end;
-
-  procedure source_cursor_too_many_columns is
-  begin
-    ut.expect(run_report('tc_cursor_source.too_many_columns')).to_be_like(
-      '%The --%testcasesource function get_wide returned more columns than can be passed to the test procedure.%1 tests, 0 failed, 1 errored%'
-    );
-  end;
-
-  procedure source_cursor_position_count is
-  begin
-    ut.expect(run_report('tc_cursor_source.position_count')).to_be_like(
-      '%The --%testcasesource function get_three returned 3 column(s) and none is named like a parameter, but the test procedure has 2 parameter(s);%1 tests, 0 failed, 1 errored%'
-    );
-  end;
-
-  procedure source_cursor_misspelled_column is
-  begin
-    ut.expect(run_report('tc_cursor_source.misspelled_column')).to_be_like(
-      '%The --%testcasesource function get_misspelled returned column A_HALV, which is no parameter of the test procedure and isn''t used in the description.%1 tests, 0 failed, 1 errored%'
-    );
-  end;
-
-  procedure source_cursor_missing_column is
-  begin
-    ut.expect(run_report('tc_cursor_source.missing_column')).to_be_like(
-      '%The --%testcasesource function get_amount returned no column for parameter A_HALF, which has no default value.%1 tests, 0 failed, 1 errored%'
-    );
-  end;
-
-  procedure source_cursor_duplicate_column is
-  begin
-    ut.expect(run_report('tc_cursor_source.duplicate_column')).to_be_like(
-      '%The --%testcasesource function get_duplicate returned columns A_AMOUNT and a_amount for the same parameter A_AMOUNT.%1 tests, 0 failed, 1 errored%'
-    );
-  end;
-
-  procedure source_cursor_lower_case_column is
-  begin
-    ut.expect(run_report('tc_cursor_source.lower_case_column')).to_be_like('%Lower case 4 [%1 tests, 0 failed, 0 errored%');
-  end;
-
-  procedure source_cursor_overloaded is
-  begin
-    ut.expect(run_report('tc_cursor_source.overloaded')).to_be_like(
-      '%The --%testcasesource function get_amount can''t be used with the overloaded procedure OVERLOADED.%1 tests, 0 failed, 1 errored%'
-    );
-  end;
-
   procedure source_json_values_dont_fit is
   begin
     ut.expect(run_report('tc_json_source.mismatching')).to_be_like(
       '%mismatching[2]%ORA-01722%' ||
-      'mismatching[3]%Invalid JSON test case: 4 value(s) given, but the procedure has 2 parameter(s).%' ||
-      'mismatching[4]%Invalid JSON test case: the procedure has no parameter a_x.%' ||
+      'mismatching[4]%Invalid JSON test case: no value for parameter A_NUMBER, which has no default value.%' ||
       'mismatching[5]%Invalid JSON test case: parameter A_NUMBER is given twice.%' ||
       'mismatching[6]%' ||
       'mismatching[7]%Invalid JSON test case: no value for parameter A_NUMBER, which has no default value.%' ||
-      '7 tests, 0 failed, 6 errored%'
+      '7 tests, 0 failed, 5 errored%'
     );
+  end;
+
+  procedure source_without_parameters is
+  begin
+    ut.expect(run_report('tc_json_source.no_parameters')).to_be_like(
+      '%no_parameters[1]%Invalid JSON test case: the procedure NO_PARAMETERS has no parameters, so it can''t be run with test cases.%' ||
+      '1 tests, 0 failed, 1 errored%'
+    );
+  end;
+
+  procedure source_shared is
+  begin
+    ut.expect(run_report('tc_json_source.shared_source')).to_be_like(
+      '%Shared source: amount 4 [%Shared source: amount 10 [%2 tests, 0 failed, 0 errored%'
+    );
+  end;
+
+  procedure source_single_case_by_path is
+  begin
+    ut.expect(run_report('tc_json_source.from_table[2]')).to_be_like(
+      '%Half of 4 from table is 2 [%1 tests, 0 failed, 0 errored, 0 disabled, 0 warning(s)%'
+    );
+    ut.expect(run_report(':tc_json_source.from_table[3]')).to_be_like('%Half of 10 from table is 5 [%1 tests, 0 failed, 0 errored%');
+    ut.expect(
+      run_report(ut3_develop.ut_varchar2_list('tc_json_source.from_table[1]', 'tc_json_source.from_table[3]'))
+    ).to_be_like('%Half of 3 from table is 2 [%Half of 10 from table is 5 [%2 tests, 1 failed, 0 errored%');
+    ut.expect(
+      run_report(ut3_develop.ut_varchar2_list('tc_json_source.from_table[1]', 'tc_json_source.from_table'))
+    ).to_be_like('%3 tests, 1 failed, 0 errored%');
+    ut.expect(
+      run_report(ut3_develop.ut_varchar2_list('tc_json_source.from_table[1]', 'tc_json_source'))
+    ).to_be_like('%Half of 3 from table is 2 [%Half of 4 from table is 2 [%Half of 10 from table is 5 [%');
+  end;
+
+  procedure source_case_number_too_high is
+  begin
+    ut.expect(run_report('tc_json_source.from_table[9]')).to_be_like(
+      '%Test case 9 doesn''t exist, the --%testcasesource function returned 3 test case(s).%0 tests, 0 failed, 0 errored, 0 disabled, 1 warning(s)%'
+    );
+  end;
+
+  procedure source_case_number_on_plain_test is
+    l_results ut3_develop.ut_varchar2_list;
+  begin
+    select * bulk collect into l_results from table(ut3_develop.ut.run('tc_json_source.plain[1]'));
   end;
 
   procedure source_json_long_values is
@@ -1403,68 +1123,10 @@ end;~';
     ut.expect(run_report('tc_json_source.no_description')).to_be_like('%no_description[1] [%1 tests, 0 failed, 0 errored%');
   end;
 
-  procedure source_cursor_by_name is
-  begin
-    ut.expect(report_lines('tc_cursor_source.by_name', 'Cursor case')).to_equal(
-      'Cursor case today with limit 100' || chr(10) ||
-      'Cursor case tomorrow with limit 200'
-    );
-    ut.expect(run_report('tc_cursor_source.by_name')).to_be_like('%2 tests, 0 failed, 0 errored%');
-  end;
-
-  procedure source_cursor_by_position is
-  begin
-    ut.expect(run_report('tc_cursor_source.by_position')).to_be_like(
-      '%Position: half of 4 is 2 [%Position: half of 10 is 5 [%2 tests, 0 failed, 0 errored%'
-    );
-  end;
-
-  procedure source_cursor_snapshot is
-  begin
-    ut.expect(run_report('tc_cursor_source.snapshot')).to_be_like('%3 tests, 0 failed, 0 errored%');
-  end;
-
-  procedure source_cursor_no_rows is
-  begin
-    ut.expect(run_report('tc_cursor_source.no_rows')).to_be_like(
-      '%The --%testcasesource function returned no test cases.%0 tests, 0 failed, 0 errored, 0 disabled, 1 warning(s)%'
-    );
-  end;
-
-  procedure source_cursor_unsupported_column is
-  begin
-    ut.expect(run_report('tc_cursor_source.unsupported_column')).to_be_like(
-      '%The --%testcasesource function get_xml returned column A_XML, which has a data type that can''t be passed to the test: XMLTYPE.%' ||
-      '1 tests, 0 failed, 1 errored%'
-    );
-  end;
-
-  procedure source_cursor_column_doesnt_fit is
-  begin
-    ut.expect(run_report('tc_cursor_source.column_doesnt_fit')).to_be_like(
-      '%The --%testcasesource function get_wrong_column returned column A_PAIR of type NUMBER, which can''t be passed to parameter A_PAIR of type %.TEST_CASE_PAIR.%1 tests, 0 failed, 1 errored%'
-    );
-  end;
-
-  procedure source_cursor_many_rows is
-  begin
-    ut.expect(run_report('tc_cursor_source.many_rows')).to_be_like('%300 tests, 0 failed, 0 errored%');
-  end;
-
-  $if dbms_db_version.version >= 23 $then
-  procedure source_cursor_booleans is
-  begin
-    ut.expect(run_report('tc_cursor_source.booleans')).to_be_like(
-      '%Flag true is yes [%Flag false is no [%Flag null is null [%3 tests, 0 failed, 0 errored%'
-    );
-  end;
-  $end
-
-  procedure times_json_and_cursor_alike is
+  procedure times_json is
   begin
     set_other_session();
-    ut.expect(run_report('tc_times.json_strings'), 'JSON').to_be_like('%2 tests, 0 failed, 0 errored%');
-    ut.expect(run_report('tc_times.cursor_values'), 'cursor').to_be_like('%1 tests, 0 failed, 0 errored%');
+    ut.expect(run_report('tc_times.json_strings')).to_be_like('%2 tests, 0 failed, 0 errored%');
     restore_session();
   exception
     when others then
